@@ -1,0 +1,6 @@
+snapshot_date,facility,sku_category,sku_count,units_on_hand,days_cover,stockout_skus,excess_skus,inventory_accuracy_pct,obsolete_value_aud
+2026-08-28,Eastport DC,Consumer electronics,842,18420,27.4,38,126,95.8,428000
+2026-08-28,Eastport DC,Home appliances,316,7215,34.8,11,72,96.4,311000
+2026-08-28,Eastport DC,Accessories,1284,48620,41.2,64,287,95.1,196000
+2026-08-28,Eastport DC,Spare parts,2210,33980,68.7,92,604,94.6,537000
+2026-08-28,Eastport DC,Seasonal,428,15110,52.5,7,181,96.0,284000

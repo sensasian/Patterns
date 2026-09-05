@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Noema — Visual Evidence Investigation",
-  description: "Connect databases and documents into a provenance-aware knowledge network for visual investigation.",
+  title: "Nodes — Supply Chain Intelligence",
+  description: "Benchmark supply-chain operations, trace constraints and prioritise evidence-backed interventions.",
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
 };
 

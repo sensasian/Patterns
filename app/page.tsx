@@ -1,148 +1,69 @@
 "use client";
 
-import { FormEvent, PointerEvent, WheelEvent, useMemo, useRef, useState } from "react";
+import { ChangeEvent, useMemo, useState } from "react";
 
-type Kind = "concept" | "evidence" | "source" | "pattern" | "hypothesis" | "contradiction";
-type Hub = { id:string; label:string; sub:string; x:number; y:number; kind:Kind; score:number };
-type LiveRecord = {id:string;title:string;year?:number;authors:string[];source:"Crossref"|"OpenAlex";sourceId:string;uri:string;doi?:string;retrievedAt:string;evidence:string};
-type InvestigationResult = {query:string;retrievedAt:string;liveSources:string[];records:LiveRecord[];pattern:string[]};
+type Metrics={throughput:number;dispatch:number;pickAccuracy:number;inventoryAccuracy:number;dockToStock:number;spaceUtilization:number;lateInbound:number;costPerOrder:number};
+type MetricKey=keyof Metrics;
+type MetricConfig={key:MetricKey;label:string;unit:string;regional:[number,number];global:[number,number];higherBetter:boolean;target:string};
+type Constraint={id:string;label:string;category:string;severity:"critical"|"high"|"watch"|"healthy";value:string;x:number;y:number;reason:string};
+type UploadSummary={facility:string;region:string;period:string;rows:number;files:string[]};
 
-const hubs: Hub[] = [
-  {id:"p27",label:"PATTERN 027",sub:"Shared directors → vendors → awards",x:48,y:44,kind:"pattern",score:82},
-  {id:"companies",label:"Organisations",sub:"12,640 registry entities",x:25,y:25,kind:"concept",score:76},
-  {id:"people",label:"People & directors",sub:"8,421 resolved identities",x:72,y:24,kind:"concept",score:71},
-  {id:"contracts",label:"Contracts & awards",sub:"34,208 public records",x:21,y:67,kind:"concept",score:79},
-  {id:"places",label:"Locations",sub:"6,301 normalised places",x:72,y:67,kind:"concept",score:88},
-  {id:"hypothesis",label:"Coordinated network",sub:"Hypothesis · low–moderate",x:49,y:80,kind:"hypothesis",score:54},
-  {id:"contra",label:"Independent tenders",sub:"Contradiction · 11 records",x:86,y:46,kind:"contradiction",score:73},
+const configs:MetricConfig[]=[
+  {key:"throughput",label:"Lines per labour hour",unit:"",regional:[14.8,2.5],global:[16.2,3.1],higherBetter:true,target:"> 15.0"},
+  {key:"dispatch",label:"On-time dispatch",unit:"%",regional:[95.0,3.0],global:[96.1,2.4],higherBetter:true,target:"> 95%"},
+  {key:"pickAccuracy",label:"Pick accuracy",unit:"%",regional:[99.25,.5],global:[99.38,.42],higherBetter:true,target:"> 99.2%"},
+  {key:"inventoryAccuracy",label:"Inventory accuracy",unit:"%",regional:[98.5,1.1],global:[98.9,.9],higherBetter:true,target:"> 98.5%"},
+  {key:"dockToStock",label:"Dock-to-stock",unit:" hrs",regional:[5.8,2.2],global:[4.9,2.0],higherBetter:false,target:"< 6 hrs"},
+  {key:"spaceUtilization",label:"Space utilisation",unit:"%",regional:[83,7],global:[81,8],higherBetter:false,target:"80–88%"},
+  {key:"lateInbound",label:"Late inbound",unit:"%",regional:[9.5,5],global:[7.8,4.5],higherBetter:false,target:"< 10%"},
+  {key:"costPerOrder",label:"Cost per order",unit:" AUD",regional:[7.85,1.4],global:[7.2,1.6],higherBetter:false,target:"< $8.00"},
 ];
 
-const copy:Record<string,{k:string;title:string;body:string;metrics:string[]}>= {
-  p27:{k:"Discovered pattern",title:"Shared directors → related vendors → public awards",body:"A recurring ownership and procurement path appears across otherwise separate datasets. It is a candidate pattern, not evidence of coordination or wrongdoing.",metrics:["47 records","8 sources","5 jurisdictions"]},
-  companies:{k:"Entity cluster",title:"Organisations",body:"Companies, public bodies, research institutions and vendors resolved across registry records, filings, contracts and uploaded evidence.",metrics:["12,640 entities","91% resolved","14 databases"]},
-  people:{k:"Entity cluster",title:"People & directors",body:"Named people matched across directorships, filings, publications and awards. Ambiguous identities remain separated until corroborated.",metrics:["8,421 identities","613 ambiguous","12 databases"]},
-  contracts:{k:"Record cluster",title:"Contracts & awards",body:"Tender notices, award records, invoices and amendments normalised into one timeline while retaining original identifiers.",metrics:["34,208 records","7 jurisdictions","4 source types"]},
-  places:{k:"Entity cluster",title:"Locations",body:"Addresses, facilities and geographic references normalised across source systems, with confidence preserved for inferred matches.",metrics:["6,301 places","22 countries","438 uncertain"]},
-  hypothesis:{k:"Hypothesis",title:"Coordinated supplier network",body:"A possible explanation for the repeated ownership and award structure. Common professional services and market concentration remain plausible alternatives.",metrics:["9 supporting","11 against","Low confidence"]},
-  contra:{k:"Contradiction",title:"Independent tender processes",body:"Eleven award records contain documented competitive processes that weaken a single coordinated-network explanation.",metrics:["11 records","6 authorities","Material challenge"]},
-};
+const defaultMetrics:Metrics={throughput:11.5,dispatch:89.4,pickAccuracy:98.22,inventoryAccuracy:96.5,dockToStock:10.1,spaceUtilization:94.2,lateInbound:23.1,costPerOrder:9.4};
+const defaultSummary:UploadSummary={facility:"Eastport Consumer Logistics",region:"Sydney · ANZ",period:"1–28 August 2026",rows:45,files:["warehouse daily","transport lanes","inventory snapshot"]};
 
-const connectors=[
-  {name:"Crossref",type:"Research metadata API",state:"live",items:"search"},
-  {name:"OpenAlex",type:"Open scholarly graph API",state:"live",items:"search"},
-  {name:"Companies House",type:"Company registry",state:"planned",items:"—"},
-  {name:"SEC EDGAR",type:"Company filings",state:"planned",items:"—"},
-  {name:"OpenCorporates",type:"Global registry index",state:"planned",items:"—"},
-  {name:"AusTender",type:"Public procurement",state:"planned",items:"—"},
-  {name:"GDELT",type:"Global events and news",state:"planned",items:"—"},
-  {name:"Local evidence vault",type:"PDF, CSV, XLSX and JSON",state:"planned",items:"—"},
-];
+function erf(value:number){const sign=value<0?-1:1;const x=Math.abs(value);const t=1/(1+.3275911*x);const y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-.284496736)*t+.254829592)*t*Math.exp(-x*x);return sign*y}
+function percentile(value:number,[mean,sd]:[number,number],higherBetter:boolean){const z=(value-mean)/sd;const raw=.5*(1+erf(z/Math.sqrt(2)));return Math.max(1,Math.min(99,Math.round((higherBetter?raw:1-raw)*100)))}
+function mean(rows:Record<string,string>[],key:string){const values=rows.map(row=>Number(row[key])).filter(Number.isFinite);return values.length?values.reduce((a,b)=>a+b,0)/values.length:0}
+function parseCsv(text:string){const [header,...lines]=text.trim().split(/\r?\n/);const keys=header.split(",").map(value=>value.trim());return lines.filter(Boolean).map(line=>{const values=line.split(",");return Object.fromEntries(keys.map((key,index)=>[key,values[index]?.trim()??""]))})}
 
-const colors:Record<Kind,string>={concept:"#b8ff57",evidence:"#f3ef72",source:"#8b91a5",pattern:"#b975ff",hypothesis:"#58d8ff",contradiction:"#ff625f"};
+function analyse(files:Array<{name:string;rows:Record<string,string>[]}>){
+  const warehouse=files.find(file=>"order_lines" in (file.rows[0]??{}));
+  const inventory=files.find(file=>"sku_category" in (file.rows[0]??{}));
+  if(!warehouse)throw new Error("Upload a warehouse daily CSV containing order_lines and labor_hours.");
+  const rows=warehouse.rows;const totalLines=rows.reduce((sum,row)=>sum+Number(row.order_lines||0),0);const totalHours=rows.reduce((sum,row)=>sum+Number(row.labor_hours||0),0);
+  const metrics:Metrics={throughput:totalHours?totalLines/totalHours:0,dispatch:mean(rows,"on_time_dispatch_pct"),pickAccuracy:mean(rows,"pick_accuracy_pct"),inventoryAccuracy:inventory?mean(inventory.rows,"inventory_accuracy_pct"):mean(rows,"inventory_accuracy_pct"),dockToStock:mean(rows,"dock_to_stock_hours"),spaceUtilization:mean(rows,"space_utilization_pct"),lateInbound:mean(rows,"late_inbound_pct"),costPerOrder:mean(rows,"cost_per_order")};
+  const dates=rows.map(row=>row.date).filter(Boolean).sort();
+  return {metrics,summary:{facility:rows[0]?.facility||"Uploaded operation",region:`${rows[0]?.region||"Unknown region"} · uploaded`,period:dates.length?`${dates[0]} to ${dates.at(-1)}`:"Uploaded period",rows:files.reduce((sum,file)=>sum+file.rows.length,0),files:files.map(file=>file.name)} as UploadSummary};
+}
+
+function constraints(metrics:Metrics):Constraint[]{return [
+  {id:"inbound",label:"Inbound variability",category:"Supplier & transport",severity:metrics.lateInbound>18?"critical":metrics.lateInbound>10?"high":"healthy",value:`${metrics.lateInbound.toFixed(1)}% late`,x:14,y:26,reason:"Late arrivals compress receiving capacity and shift work into peak fulfilment windows."},
+  {id:"receiving",label:"Receiving backlog",category:"Warehouse",severity:metrics.dockToStock>9?"critical":metrics.dockToStock>6?"high":"healthy",value:`${metrics.dockToStock.toFixed(1)} hrs`,x:36,y:27,reason:"Dock-to-stock time is extending inventory unavailability and consuming staging space."},
+  {id:"capacity",label:"Storage capacity",category:"Facility",severity:metrics.spaceUtilization>92?"critical":metrics.spaceUtilization>87?"high":"healthy",value:`${metrics.spaceUtilization.toFixed(1)}% full`,x:56,y:48,reason:"Utilisation above the operating envelope increases travel, reshuffling and congestion."},
+  {id:"picking",label:"Pick productivity",category:"Fulfilment",severity:metrics.throughput<12?"high":metrics.throughput<14?"watch":"healthy",value:`${metrics.throughput.toFixed(1)} lines/hr`,x:75,y:27,reason:"Low effective throughput is consistent with congestion and replenishment interference."},
+  {id:"dispatch",label:"Dispatch service",category:"Customer promise",severity:metrics.dispatch<90?"critical":metrics.dispatch<94?"high":"healthy",value:`${metrics.dispatch.toFixed(1)}% OTD`,x:87,y:53,reason:"Late dispatch is the primary downstream service breach in the uploaded period."},
+  {id:"inventory",label:"Inventory integrity",category:"Inventory",severity:metrics.inventoryAccuracy<97?"high":metrics.inventoryAccuracy<98.5?"watch":"healthy",value:`${metrics.inventoryAccuracy.toFixed(1)}% accurate`,x:52,y:75,reason:"Accuracy loss drives short picks, rework and unreliable available-to-promise signals."},
+  {id:"cost",label:"Cost pressure",category:"Commercial",severity:metrics.costPerOrder>9?"high":metrics.costPerOrder>8?"watch":"healthy",value:`$${metrics.costPerOrder.toFixed(2)}/order`,x:78,y:78,reason:"Rework, congestion and labour dilution are elevating unit fulfilment cost."},
+]}
 
 export default function Home(){
-  const [active,setActive]=useState("p27");
-  const [selected,setSelected]=useState<string[]>(["companies","people","contracts"]);
-  const [panel,setPanel]=useState<"inspect"|"sources"|"controls">("sources");
-  const [aiOpen,setAiOpen]=useState(false);
-  const [surprise,setSurprise]=useState(false);
-  const [query,setQuery]=useState("graph-based evidence discovery");
-  const [result,setResult]=useState<InvestigationResult|null>(null);
-  const [activeLiveId,setActiveLiveId]=useState<string|null>(null);
-  const [loading,setLoading]=useState(false);
-  const [error,setError]=useState("");
-  const [liveSelected,setLiveSelected]=useState<string[]>([]);
-  const [crossInsight,setCrossInsight]=useState("");
-  const [camera,setCamera]=useState({x:0,y:0,scale:1,rotation:0});
-  const drag=useRef<{x:number;y:number;cx:number;cy:number}|null>(null);
-
-  const satellites=useMemo(()=>hubs.flatMap((hub,hubIndex)=>Array.from({length:hubIndex===0?18:hubIndex===6?8:12},(_,index)=>{
-    const total=hubIndex===0?18:hubIndex===6?8:12;
-    const angle=(index/total)*Math.PI*2+(hubIndex*.37);
-    const radius=(hubIndex===0?10:7.2)+(index%3)*2.1;
-    const kinds:Kind[]=["evidence","source","evidence","evidence","source","evidence"];
-    return {id:`${hub.id}-${index}`,hub:hub.id,x:Number((hub.x+Math.cos(angle)*radius).toFixed(3)),y:Number((hub.y+Math.sin(angle)*radius*.82).toFixed(3)),kind:kinds[(index+hubIndex)%kinds.length],r:2.1+(index%4)*.45};
-  })),[]);
-  const livePositions=useMemo(()=>result?.records.map((record,index)=>{
-    const rings=4;
-    const ringIndex=index%rings;
-    const positionInRing=Math.floor(index/rings);
-    const countInRing=Math.ceil(result.records.length/rings);
-    const angle=(positionInRing/countInRing)*Math.PI*2+(ringIndex*.41)-Math.PI/2;
-    const ring=15+(ringIndex*8);
-    return {...record,x:Number((48+Math.cos(angle)*ring).toFixed(3)),y:Number((48+Math.sin(angle)*ring*.72).toFixed(3))};
-  })??[],[result]);
-  const d=copy[active]??copy.p27;
-  const activeLive=result?.records.find(record=>record.id===activeLiveId);
-
-  function toggle(id:string){setActive(id);setPanel("inspect");setSelected(current=>current.includes(id)?current.filter(item=>item!==id):[...current,id].slice(-4))}
-  function investigate(){setActive("p27");setAiOpen(true);setSurprise(false)}
-  async function runLiveInvestigation(event?:FormEvent){
-    event?.preventDefault();
-    await fetchInvestigation(query,false);
-  }
-  async function fetchInvestigation(searchQuery:string,append:boolean){
-    if(searchQuery.trim().length<3)return;
-    setLoading(true);setError("");setSurprise(false);setAiOpen(false);
-    try{
-      const response=await fetch(`/api/investigate?q=${encodeURIComponent(searchQuery.trim())}&limit=40`);
-      const payload=await response.json() as InvestigationResult&{error?:string};
-      if(!response.ok)throw new Error(payload.error||"Connected-source search failed.");
-      if(append&&result){
-        const merged=[...result.records,...payload.records].filter((record,index,all)=>all.findIndex(item=>item.id===record.id)===index);
-        setResult({...result,records:merged,pattern:[...new Set([...result.pattern,...payload.pattern])].slice(0,8),retrievedAt:payload.retrievedAt,liveSources:[...new Set([...result.liveSources,...payload.liveSources])]});
-      }else{
-        setResult(payload);setActiveLiveId(payload.records[0]?.id??null);setLiveSelected([]);setCrossInsight("");setCamera({x:0,y:0,scale:1,rotation:0});
-      }
-      setPanel("inspect");setSelected([]);
-    }catch(reason){setError(reason instanceof Error?reason.message:"Connected-source search failed.")}
-    finally{setLoading(false)}
-  }
-  function selectLive(record:LiveRecord){
-    setActiveLiveId(record.id);setPanel("inspect");setCrossInsight("");
-    setLiveSelected(current=>current.includes(record.id)?current.filter(id=>id!==record.id):[...current,record.id].slice(-2));
-  }
-  function crossReference(){
-    if(!result||liveSelected.length!==2)return;
-    const records=liveSelected.map(id=>result.records.find(record=>record.id===id)).filter(Boolean) as LiveRecord[];
-    const terms=records.map(record=>new Set((`${record.title} ${record.evidence}`).toLowerCase().match(/[a-z][a-z-]{4,}/g)??[]));
-    const shared=[...terms[0]].filter(term=>terms[1].has(term)&&!["about","between","from","their","these","through","using","which","with"].includes(term)).slice(0,8);
-    const sharedAuthors=records[0].authors.filter(author=>records[1].authors.includes(author));
-    setCrossInsight(sharedAuthors.length?`Shared authors: ${sharedAuthors.join(", ")}. Recurring concepts: ${shared.join(", ")||"none detected"}.`:`Recurring concepts: ${shared.join(", ")||"No strong lexical overlap detected"}. The records come from ${new Set(records.map(record=>record.source)).size} independent indexes.`);
-  }
-  function fitGraph(){setCamera({x:0,y:0,scale:1,rotation:0});setSurprise(false)}
-  function onWheel(event:WheelEvent){event.preventDefault();setCamera(value=>({...value,scale:Math.max(.45,Math.min(3,value.scale*(event.deltaY>0?.9:1.1)))}))}
-  function onPointerDown(event:PointerEvent<HTMLDivElement>){if((event.target as Element).closest("button,a,input,form"))return;drag.current={x:event.clientX,y:event.clientY,cx:camera.x,cy:camera.y};event.currentTarget.setPointerCapture(event.pointerId)}
-  function onPointerMove(event:PointerEvent<HTMLDivElement>){if(!drag.current)return;setCamera(value=>({...value,x:drag.current!.cx+event.clientX-drag.current!.x,y:drag.current!.cy+event.clientY-drag.current!.y}))}
-  function onPointerUp(){drag.current=null}
-
-  return <main className="dark-app">
-    <header className="dark-topbar"><div className="wordmark"><i>∿</i> NOEMA</div><div className="investigation-title"><span>EVIDENCE NETWORK</span><b>{result?result.query:"Unified knowledge graph"}</b><em>2 LIVE SOURCES</em></div><div className="top-tools"><button aria-label="Search">⌕</button><button aria-label="Export">↧</button><button>Share</button><span>TY</span></div></header>
-    <section className="graph-stage">
-      <div className="stage-tools"><button className="active">◎ Graph</button><button>≋ Timeline</button><button>⌖ Geography</button><span/><button onClick={fitGraph}>Fit all</button><button onClick={()=>{setSurprise(true);setResult(null)}} className="magic">✦ Surprise me</button></div>
-      <form className="live-search" onSubmit={runLiveInvestigation}><input aria-label="Investigation query" value={query} onChange={event=>setQuery(event.target.value)} placeholder="Investigate across live sources…"/><button disabled={loading}>{loading?"Searching…":"Build live graph"}</button></form>
-      <div className="map-meta"><span className="live-dot"/> {result?`${result.records.length} live records · ${result.liveSources.join(" + ")}`:"Demo corpus · run a live search to replace it"}</div>
-      {error&&<div className="live-error" role="alert">{error}</div>}
-      <div className="map-nav"><button aria-label="Zoom in" onClick={()=>setCamera(value=>({...value,scale:Math.min(3,value.scale*1.2)}))}>+</button><button aria-label="Zoom out" onClick={()=>setCamera(value=>({...value,scale:Math.max(.45,value.scale/1.2)}))}>−</button><button aria-label="Rotate graph" onClick={()=>setCamera(value=>({...value,rotation:value.rotation+15}))}>↻</button><button aria-label="Reset view" onClick={fitGraph}>⌗</button></div>
-      <div className="graph-camera" onWheel={onWheel} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} style={{transform:`translate(${camera.x}px, ${camera.y}px) scale(${camera.scale}) rotate(${camera.rotation}deg)`}}>
-      <svg className="network" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Evidence relationship map"><defs><radialGradient id="halo"><stop offset="0" stopColor="#ba75ff" stopOpacity=".26"/><stop offset="1" stopColor="#ba75ff" stopOpacity="0"/></radialGradient></defs><circle cx="48" cy="44" r="23" fill="url(#halo)"/>
-        {!result&&hubs.flatMap(hub=>satellites.filter(node=>node.hub===hub.id).map(node=><line key={`l-${node.id}`} x1={hub.x} y1={hub.y} x2={node.x} y2={node.y} style={{opacity:.33}}/>))}
-        {!result&&[["p27","companies"],["p27","people"],["p27","contracts"],["p27","places"],["p27","hypothesis"],["people","contra"],["contracts","contra"],["hypothesis","contracts"]].map(([a,b])=>{const from=hubs.find(h=>h.id===a)!;const to=hubs.find(h=>h.id===b)!;return <line key={`${a}${b}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y} className={b==="contra"?"challenge":"major"}/>})}
-        {!result&&satellites.map(node=><circle key={node.id} cx={node.x} cy={node.y} r={node.r/8} fill={colors[node.kind]} className="satellite" onClick={()=>{setActive(node.hub);setPanel("inspect")}}><title>{`${node.kind} linked to ${copy[node.hub]?.title}`}</title></circle>)}
-        {result&&livePositions.map(record=><line key={`line-${record.id}`} x1="48" y1="48" x2={record.x} y2={record.y} className="major"/>)}
-      </svg>
-      {!result&&hubs.map(hub=><button key={hub.id} onClick={()=>toggle(hub.id)} className={`hub hub-${hub.kind} ${active===hub.id?"active":""} ${selected.includes(hub.id)?"selected":""}`} style={{left:`${hub.x}%`,top:`${hub.y}%`,"--node-color":colors[hub.kind]} as React.CSSProperties}><i/><strong>{hub.label}</strong><small>{hub.sub}</small></button>)}
-      {result&&<button className="hub hub-pattern active live-centre" style={{left:"48%",top:"48%","--node-color":colors.pattern} as React.CSSProperties}><i/><strong>LIVE INVESTIGATION</strong><small>{result.pattern.length?result.pattern.join(" · "):result.query}</small></button>}
-      {result&&livePositions.map(record=><button key={record.id} onClick={()=>selectLive(record)} className={`hub live-record ${activeLiveId===record.id?"active":""} ${liveSelected.includes(record.id)?"selected":""}`} style={{left:`${record.x}%`,top:`${record.y}%`,"--node-color":record.source==="Crossref"?colors.evidence:colors.hypothesis} as React.CSSProperties}><i/><strong>{record.source} · {record.year??"n.d."}</strong><small>{record.title}</small></button>)}
-      </div>
-      {surprise&&<div className="anomaly"><span>DEMO PATTERN · 04</span><b>Three vendors share directors, addresses and award timing</b><p>Illustrative data—run a live search for retrieved evidence.</p><button onClick={()=>setSurprise(false)}>Close</button></div>}
-      <div className="map-key"><b>MAP KEY</b>{(["evidence","concept","pattern","hypothesis","contradiction"] as Kind[]).map(kind=><span key={kind}><i style={{background:colors[kind]}}/>{kind}</span>)}</div>
-      {!result?<div className="selected-tray"><span>{selected.length}</span><div><b>Nodes selected</b><small>{selected.map(id=>copy[id]?.title).join(" · ")}</small></div><button onClick={()=>setSelected([])}>Clear</button><button className="run" disabled={selected.length<2} onClick={investigate}>✦ Investigate relationship</button></div>:<div className="selected-tray live-tray"><span>{liveSelected.length}</span><div><b>{result.records.length} live nodes · select two to compare</b><small>{liveSelected.map(id=>result.records.find(record=>record.id===id)?.title).filter(Boolean).join(" ↔ ")||`${result.liveSources.join(" + ")} · drag, scroll or rotate the canvas`}</small></div><button onClick={()=>setLiveSelected([])}>Clear</button><button className="run" disabled={liveSelected.length!==2} onClick={crossReference}>Cross-reference</button></div>}
+  const [metrics,setMetrics]=useState(defaultMetrics);const [summary,setSummary]=useState(defaultSummary);const [uploaded,setUploaded]=useState(false);const [error,setError]=useState("");const [view,setView]=useState<"overview"|"benchmarks"|"network">("overview");const [selected,setSelected]=useState("capacity");const [busy,setBusy]=useState(false);
+  const nodes=useMemo(()=>constraints(metrics),[metrics]);const selectedNode=nodes.find(node=>node.id===selected)??nodes[0];
+  const scores=useMemo(()=>configs.map(config=>({...config,value:metrics[config.key],regionalPct:percentile(metrics[config.key],config.regional,config.higherBetter),globalPct:percentile(metrics[config.key],config.global,config.higherBetter)})),[metrics]);
+  const overall=Math.round(scores.reduce((sum,score)=>sum+score.regionalPct,0)/scores.length);const critical=nodes.filter(node=>node.severity==="critical").length;const high=nodes.filter(node=>node.severity==="high").length;
+  async function upload(event:ChangeEvent<HTMLInputElement>){const chosen=[...(event.target.files??[])];if(!chosen.length)return;setBusy(true);setError("");try{const parsed=await Promise.all(chosen.map(async file=>({name:file.name,rows:parseCsv(await file.text())})));const result=analyse(parsed);setMetrics(result.metrics);setSummary(result.summary);setUploaded(true)}catch(reason){setError(reason instanceof Error?reason.message:"Could not read these files.")}finally{setBusy(false);event.target.value=""}}
+  const edges:[[string,string,string],...Array<[string,string,string]>]=[["inbound","receiving","arrival compression"],["receiving","capacity","staging congestion"],["capacity","picking","travel + interference"],["picking","dispatch","missed cut-off"],["inventory","picking","short picks"],["dispatch","cost","expedite + rework"],["capacity","inventory","cycle count disruption"]];
+  return <main className="nodes-app">
+    <header className="nodes-top"><div className="nodes-brand"><i>●</i><b>NODES</b><span>Supply Chain Intelligence</span></div><div className="operator"><small>ACTIVE OPERATION</small><b>{summary.facility}</b><em>{uploaded?"Uploaded analysis":"Synthetic demonstration"}</em></div><button className="avatar">TY</button></header>
+    <aside className="nodes-side"><nav><button className={view==="overview"?"active":""} onClick={()=>setView("overview")}><i>⌂</i>Overview</button><button className={view==="benchmarks"?"active":""} onClick={()=>setView("benchmarks")}><i>▦</i>Benchmark matrix</button><button className={view==="network"?"active":""} onClick={()=>setView("network")}><i>⌘</i>Constraint network</button></nav><section><small>DATA SOURCES</small><div><i className="ok"/>Warehouse operations</div><div><i className="ok"/>Transport lanes</div><div><i className="ok"/>Inventory snapshot</div></section><div className="side-foot"><small>BENCHMARK COHORT</small><b>ANZ Consumer & Retail</b><span>42 regional · 318 global operations</span></div></aside>
+    <section className="nodes-main">
+      <div className="page-head"><div><small>OPERATIONAL DIAGNOSTIC / {summary.period}</small><h1>{view==="overview"?"Network performance overview":view==="benchmarks"?"Benchmark performance matrix":"Constraint and vulnerability network"}</h1><p>{summary.region} · {summary.rows} operational records analysed</p></div><div className="upload-actions"><a href="/samples/nodes-warehouse-daily.csv" download>Download sample</a><label className={busy?"busy":""}>{busy?"Processing…":"Upload operational CSVs"}<input type="file" accept=".csv,text/csv" multiple onChange={upload}/></label></div></div>
+      {error&&<div className="upload-error" role="alert">{error}</div>}
+      <div className="status-strip"><div><span>Operational benchmark</span><b>P{overall}</b><em className={overall<35?"bad":"watch"}>{overall<35?"Below peer range":"Within peer range"}</em></div><div><span>Critical constraints</span><b>{critical}</b><em className="bad">Immediate attention</em></div><div><span>High-pressure nodes</span><b>{high}</b><em className="watch">Monitor and intervene</em></div><div><span>Estimated service exposure</span><b>{Math.max(0,95-metrics.dispatch).toFixed(1)} pts</b><em className="bad">Against 95% target</em></div></div>
+      {view==="overview"&&<><section className="dashboard-grid"><div className="panel benchmark-panel"><header><div><small>PERFORMANCE MATRIX</small><h2>Where this operation sits against peers</h2></div><button onClick={()=>setView("benchmarks")}>View all metrics →</button></header><div className="mini-matrix">{scores.slice(0,6).map(score=><div key={score.key}><span>{score.label}<small>{score.value.toFixed(score.key.includes("Accuracy")?2:1)}{score.unit}</small></span><div><i style={{width:`${score.regionalPct}%`}} className={score.regionalPct<25?"red":score.regionalPct<50?"amber":"green"}/><b>P{score.regionalPct}</b></div></div>)}</div></div><div className="panel exposure"><small>PRIMARY FINDING</small><div className="exposure-score"><b>01</b><span>Capacity breach is propagating into customer service</span></div><p>Space utilisation has averaged {metrics.spaceUtilization.toFixed(1)}%, above the recommended operating envelope. The data indicates receiving congestion is reducing pick throughput and contributing to dispatch misses.</p><div className="causal"><span>Late inbound</span><i>→</i><span>Dock backlog</span><i>→</i><span>Congestion</span><i>→</i><span>Service breach</span></div><button onClick={()=>setView("network")}>Trace constraint path</button></div></section><section className="panel recommendations"><header><div><small>PRIORITISED ACTIONS</small><h2>Recommended interventions</h2></div><span>Ranked by service impact, confidence and effort</span></header><div className="rec-list"><article><b>1</b><div><em>IMMEDIATE · HIGH CONFIDENCE</em><h3>Stabilise inbound appointment adherence</h3><p>Segment suppliers by arrival variability and introduce protected receiving windows for the highest-volume late cohort.</p></div><strong><span>Service impact</span>+2.1–3.4 pts</strong><i>Low effort</i></article><article><b>2</b><div><em>0–30 DAYS · HIGH CONFIDENCE</em><h3>Release the capacity pressure valve</h3><p>Remove identified excess/obsolete inventory and create temporary forward-pick overflow before the next volume peak.</p></div><strong><span>Capacity impact</span>−6–9 pts</strong><i>Medium effort</i></article><article><b>3</b><div><em>30–60 DAYS · MODERATE CONFIDENCE</em><h3>Re-slot high-frequency SKUs</h3><p>Prioritise families associated with short picks and excess travel; validate through a two-week controlled wave.</p></div><strong><span>Productivity</span>+8–14%</strong><i>Medium effort</i></article></div></section></>}
+      {view==="benchmarks"&&<section className="panel full-matrix"><header><div><small>PEER-NORMALISED PERFORMANCE</small><h2>Regional and global percentile matrix</h2></div><span>Higher percentile = stronger performance</span></header><div className="matrix-head"><b>Metric</b><b>Operation</b><b>Target</b><b>ANZ cohort</b><b>Global cohort</b><b>Pressure</b></div>{scores.map(score=><div className="matrix-row" key={score.key}><span><b>{score.label}</b><small>{score.higherBetter?"Higher is better":"Lower is better"}</small></span><strong>{score.value.toFixed(score.key.includes("Accuracy")?2:1)}{score.unit}</strong><em>{score.target}</em><div><i style={{width:`${score.regionalPct}%`}}/><b>P{score.regionalPct}</b></div><div><i style={{width:`${score.globalPct}%`}}/><b>P{score.globalPct}</b></div><mark className={score.regionalPct<20?"critical":score.regionalPct<40?"high":"stable"}>{score.regionalPct<20?"Critical":score.regionalPct<40?"High":"Stable"}</mark></div>)}<footer>Benchmark cohorts are synthetic for demonstration. Production percentiles require TMX-approved, anonymised peer cohorts and consistent metric definitions.</footer></section>}
+      {view==="network"&&<section className="network-layout"><div className="panel constraint-map"><header><div><small>CONSTRAINT PROPAGATION</small><h2>Select any node to inspect the pressure path</h2></div><div className="legend"><span><i className="critical"/>Critical</span><span><i className="high"/>High</span><span><i className="watch"/>Watch</span></div></header><div className="network-canvas"><svg viewBox="0 0 100 100" preserveAspectRatio="none">{edges.map(([from,to,label])=>{const a=nodes.find(n=>n.id===from)!;const b=nodes.find(n=>n.id===to)!;return <g key={`${from}-${to}`}><line x1={a.x} y1={a.y} x2={b.x} y2={b.y}/><text x={(a.x+b.x)/2} y={(a.y+b.y)/2-1}>{label}</text></g>})}</svg>{nodes.map(node=><button key={node.id} onClick={()=>setSelected(node.id)} className={`constraint-node ${node.severity} ${selected===node.id?"selected":""}`} style={{left:`${node.x}%`,top:`${node.y}%`}}><i/><b>{node.label}</b><span>{node.value}</span></button>)}</div></div><aside className="panel node-inspector"><small>{selectedNode.category} / {selectedNode.severity}</small><h2>{selectedNode.label}</h2><strong>{selectedNode.value}</strong><p>{selectedNode.reason}</p><div><span>Regional comparison</span><b>P{scores.find(score=>selectedNode.id==="dispatch"?score.key==="dispatch":selectedNode.id==="capacity"?score.key==="spaceUtilization":selectedNode.id==="receiving"?score.key==="dockToStock":selectedNode.id==="inbound"?score.key==="lateInbound":selectedNode.id==="picking"?score.key==="throughput":selectedNode.id==="inventory"?score.key==="inventoryAccuracy":score.key==="costPerOrder")?.regionalPct}</b></div><button>Open supporting records</button></aside></section>}
     </section>
-    <aside className="right-dock"><div className="dock-tabs"><button onClick={()=>setPanel("inspect")} className={panel==="inspect"?"active":""}>Inspect</button><button onClick={()=>setPanel("sources")} className={panel==="sources"?"active":""}>Sources</button><button onClick={()=>setPanel("controls")} className={panel==="controls"?"active":""}>Controls</button><button aria-label="Close panel">×</button></div>
-      {panel==="inspect"?<div className="inspector">{activeLive?<><div className="evidence-status"><i style={{background:activeLive.source==="Crossref"?colors.evidence:colors.hypothesis}}/><span>Retrieved evidence · {activeLive.source}</span><em>{activeLive.year??"n.d."}</em></div><h1>{activeLive.title}</h1><p>{activeLive.evidence}</p>{crossInsight&&<div className="cross-insight"><b>Cross-reference pattern</b><p>{crossInsight}</p></div>}<div className="metric-grid"><div><b>{activeLive.authors.length}</b><span>authors shown</span></div><div><b>{activeLive.source}</b><span>live source</span></div><div><b>{activeLive.doi?"DOI":"ID"}</b><span>{activeLive.sourceId.slice(0,16)}</span></div></div><section className="lineage"><header><span>PROVENANCE CHAIN</span><b>live</b></header><div><i/><p><b>{activeLive.source} API</b><span>Retrieved {new Date(activeLive.retrievedAt).toLocaleString()}</span></p></div><div><i/><p><b>Immutable source identifier</b><span>{activeLive.sourceId}</span></p></div></section><a className="open-source" href={activeLive.uri} target="_blank" rel="noreferrer">Open original evidence <span>↗</span></a><button className="go-deeper" disabled={loading} onClick={()=>fetchInvestigation(activeLive.title.split(" ").slice(0,10).join(" "),true)}>{loading?"Expanding…":"Go deeper from this node +"}</button></>:<><div className="evidence-status"><i style={{background:colors[hubs.find(h=>h.id===active)?.kind??"pattern"]}}/><span>{d.k} · demo</span><em>{hubs.find(h=>h.id===active)?.score??82}/100</em></div><h1>{d.title}</h1><p>{d.body}</p><div className="metric-grid">{d.metrics.map(metric=><div key={metric}><b>{metric.split(" ")[0]}</b><span>{metric.substring(metric.indexOf(" ")+1)}</span></div>)}</div><section className="lineage"><header><span>PROVENANCE CHAIN</span><b>illustrative</b></header><div><i/><p><b>Prototype record</b><span>Use live search for source-backed evidence</span></p></div></section><div className="challenge-actions"><button onClick={()=>setActive("contra")}>Show evidence against</button><button onClick={()=>setActive("hypothesis")}>Create hypothesis</button></div></>}</div>:panel==="sources"?<div className="sources-panel"><header><span>DATA CONNECTORS</span><button onClick={()=>setPanel("controls")}>Search live sources</button></header><p>Crossref and OpenAlex are connected now. Other sources are clearly marked as planned.</p><div className="source-summary"><div><b>2</b><span>live now</span></div><div><b>6</b><span>planned</span></div><div><b>{result?.records.length??0}</b><span>retrieved</span></div></div><div className="connector-list">{connectors.map(connector=><button key={connector.name} onClick={()=>connector.state==="live"&&setPanel("controls")}><i className={`connector-icon ${connector.state}`}>{connector.name[0]}</i><span><b>{connector.name}</b><small>{connector.type}</small></span><em className={connector.state}>{connector.state}</em><strong>{connector.items}</strong></button>)}</div></div>:<div className="controls"><form onSubmit={runLiveInvestigation}><label>Search connected sources<input aria-label="Connected source query" value={query} onChange={event=>setQuery(event.target.value)} placeholder="Topic, entity or relationship"/></label><button className="control-run" disabled={loading}>{loading?"Retrieving evidence…":"Build investigation graph"}</button></form><section><header>ACTIVE CONNECTORS</header><label><span><i style={{background:colors.evidence}}/>Crossref</span><b>LIVE</b></label><label><span><i style={{background:colors.hypothesis}}/>OpenAlex</span><b>LIVE</b></label></section><section><header>CANVAS</header><label><span>Mouse wheel</span><b>ZOOM</b></label><label><span>Drag background</span><b>PAN</b></label><label><span>↻ toolbar button</span><b>ROTATE</b></label></section></div>}
-    </aside>
-    {!result&&<button className={`ai-tab ${aiOpen?"open":""}`} onClick={()=>setAiOpen(!aiOpen)}>✦ AI Investigator <span>{aiOpen?"×":"↑"}</span></button>}
-    {aiOpen&&<div className="ai-drawer"><header><b>✦ Prototype Investigator</b><button onClick={()=>setAiOpen(false)}>×</button></header><div className="ai-copy">This analysis uses illustrative data. Search Crossref and OpenAlex above to build a real, source-linked evidence graph.</div><div className="ai-chips"><button onClick={()=>setActive("contra")}>Find evidence against this</button><button onClick={()=>setActive("hypothesis")}>Create hypothesis</button></div></div>}
   </main>
 }

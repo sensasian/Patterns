@@ -1,0 +1,13 @@
+date,lane,carrier,shipments,on_time_delivery_pct,avg_transit_hours,damage_pct,cost_per_shipment,capacity_utilization_pct
+2026-08-01,Sydney-Melbourne,SouthLine,86,88.4,19.8,1.4,482,93.2
+2026-08-02,Sydney-Melbourne,SouthLine,79,89.1,19.2,1.2,476,91.8
+2026-08-03,Sydney-Brisbane,NorthStar,74,92.6,17.4,0.8,438,84.1
+2026-08-04,Sydney-Brisbane,NorthStar,81,91.8,18.1,0.9,446,87.5
+2026-08-05,Sydney-Perth,WestFreight,42,84.7,51.6,1.7,1182,96.4
+2026-08-06,Sydney-Perth,WestFreight,39,83.9,53.1,1.9,1208,97.2
+2026-08-07,Sydney-Adelaide,CentralHaul,51,90.2,25.4,1.1,681,89.0
+2026-08-08,Sydney-Adelaide,CentralHaul,55,89.6,26.2,1.0,694,91.3
+2026-08-09,Sydney-Melbourne,SouthLine,91,86.8,21.3,1.6,497,96.1
+2026-08-10,Sydney-Brisbane,NorthStar,77,92.1,17.8,0.7,441,85.7
+2026-08-11,Sydney-Perth,WestFreight,44,82.6,54.8,2.1,1234,98.0
+2026-08-12,Sydney-Adelaide,CentralHaul,49,91.0,24.9,0.9,674,87.8
