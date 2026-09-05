@@ -37,4 +37,8 @@ test("keeps live integrations explicit and fixes known interaction defects", asy
   assert.match(route, /api\.crossref\.org\/works/);
   assert.match(route, /api\.openalex\.org\/works/);
   assert.match(route, /Promise\.allSettled/);
+  assert.match(route, /Math\.min\(50/);
+  assert.match(page, /Cross-reference/);
+  assert.match(page, /Go deeper from this node/);
+  assert.match(page, /Rotate graph/);
 });

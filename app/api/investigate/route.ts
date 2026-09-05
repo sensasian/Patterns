@@ -21,14 +21,16 @@ const stopWords = new Set([
 
 export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get("q")?.trim();
+  const requestedLimit = Number(request.nextUrl.searchParams.get("limit") ?? 40);
+  const limit = Math.max(6, Math.min(50, Number.isFinite(requestedLimit) ? requestedLimit : 40));
   if (!query || query.length < 3) {
     return NextResponse.json({ error: "Enter at least three characters." }, { status: 400 });
   }
 
   const retrievedAt = new Date().toISOString();
   const [crossref, openAlex] = await Promise.allSettled([
-    searchCrossref(query, retrievedAt),
-    searchOpenAlex(query, retrievedAt),
+    searchCrossref(query, retrievedAt, limit),
+    searchOpenAlex(query, retrievedAt, limit),
   ]);
   const records = [
     ...(crossref.status === "fulfilled" ? crossref.value : []),
@@ -55,10 +57,10 @@ export async function GET(request: NextRequest) {
   });
 }
 
-async function searchCrossref(query: string, retrievedAt: string): Promise<EvidenceRecord[]> {
+async function searchCrossref(query: string, retrievedAt: string, limit: number): Promise<EvidenceRecord[]> {
   const url = new URL("https://api.crossref.org/works");
   url.searchParams.set("query", query);
-  url.searchParams.set("rows", "6");
+  url.searchParams.set("rows", String(limit));
   url.searchParams.set("select", "DOI,title,author,published,URL,abstract");
   const response = await fetch(url, {
     headers: { "User-Agent": "Noema/0.1 (mailto:research@noema.tools)" },
@@ -86,10 +88,10 @@ async function searchCrossref(query: string, retrievedAt: string): Promise<Evide
   });
 }
 
-async function searchOpenAlex(query: string, retrievedAt: string): Promise<EvidenceRecord[]> {
+async function searchOpenAlex(query: string, retrievedAt: string, limit: number): Promise<EvidenceRecord[]> {
   const url = new URL("https://api.openalex.org/works");
   url.searchParams.set("search", query);
-  url.searchParams.set("per-page", "6");
+  url.searchParams.set("per-page", String(limit));
   url.searchParams.set("mailto", "research@noema.tools");
   const response = await fetch(url);
   if (!response.ok) throw new Error(`OpenAlex returned ${response.status}`);
