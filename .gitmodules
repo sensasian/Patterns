@@ -1,0 +1,3 @@
+[submodule "tooling/everything-claude-code"]
+	path = tooling/everything-claude-code
+	url = https://github.com/worldflowai/everything-claude-code.git
