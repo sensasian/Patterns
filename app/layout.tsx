@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Noema — Visual Evidence Investigation",
-  description: "Explore patterns, challenge hypotheses, and trace every finding back to its evidence.",
+  description: "Connect databases and documents into a provenance-aware knowledge network for visual investigation.",
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
 };
 
