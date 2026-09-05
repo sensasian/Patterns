@@ -25,3 +25,11 @@ git submodule update --remote tooling/everything-claude-code
 ```
 
 Review upstream changes before committing the new submodule pointer.
+
+## Insight Weaver
+
+`insight-weaver` is a pinned architecture reference sourced from:
+
+https://github.com/Venkat-023/Insight-Weaver
+
+It is not included as Noema runtime code. Its ingestion, retrieval and reasoning modules are being evaluated behind Noema-owned evidence interfaces. See `OPEN_SOURCE_REUSE.md` for the audit and reuse boundary.

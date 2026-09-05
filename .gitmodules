@@ -1,3 +1,6 @@
 [submodule "tooling/everything-claude-code"]
 	path = tooling/everything-claude-code
 	url = https://github.com/worldflowai/everything-claude-code.git
+[submodule "tooling/insight-weaver"]
+	path = tooling/insight-weaver
+	url = https://github.com/Venkat-023/Insight-Weaver.git

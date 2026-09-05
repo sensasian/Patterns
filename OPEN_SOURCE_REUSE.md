@@ -47,3 +47,47 @@ Must remain Noema-owned:
 ## Licence note
 
 Most shortlisted infrastructure is permissively licensed, but every dependency and copied module still needs a current licence and transitive-dependency review before commercial distribution. Preserve notices and avoid copying product UI or branding.
+
+## Insight Weaver audit
+
+Pinned reference: `tooling/insight-weaver` at upstream revision `20240d8` (18 May 2026).
+
+### Reuse or adapt
+
+- FastAPI route and dependency structure
+- Workspace header and per-request isolation pattern
+- Asynchronous paper-processing pipeline shape
+- Scientific text cleaning and sentence splitting
+- Hybrid retrieval that merges database, lexical and vector candidates
+- API contracts for graph search, hypotheses, contradictions and cross-paper connections
+- Deterministic fallback behavior when the local model is unavailable
+
+### Do not adopt unchanged
+
+- The scientific-paper-specific ontology and extraction rules
+- Chroma as a second persistence system before PostgreSQL plus pgvector is tested
+- The tightly coupled Gemma/Ollama reasoning layer
+- Its frontend, which is a compact demonstration rather than the progressive investigation canvas
+- Pairwise LLM contradiction calls as a trustworthy contradiction engine
+- Similarity-only “unexplored connections” as a curiosity engine
+
+### Evidence-model gaps to fix before reuse
+
+- `EntityRelationship` stores free-text evidence and a paper ID, but not an immutable chunk/span ID, character offsets, page coordinates, extraction version, or direct-versus-inferred status.
+- Chunks have an optional page number but the parser materializes section text without preserving line-level page coordinates through the pipeline.
+- There is no source-lineage or dependency graph, so derivative sources cannot be discounted as non-independent confirmations.
+- Patterns, observations and findings are not distinct persisted node types with separate promotion rules.
+- Contradiction results are model verdicts without calibrated evaluation, replication, or deterministic checks.
+- Entity uniqueness is defined by normalized name and type without `workspace_id`; paper DOI/arXiv/PubMed identifiers are also globally unique. This can create cross-workspace conflicts even though API reads are workspace-filtered.
+
+### Licensing caution
+
+The repository README declares `license: mit`, but the pinned revision does not contain a standalone `LICENSE` file. Treat it as a reference until the upstream licensing artifact is clarified. Do not copy source into Noema's production codebase solely on the README declaration.
+
+### Architectural decision
+
+Use Insight Weaver as an executable reference and test corpus, not as a fork. Extract interfaces and behavior behind Noema-owned boundaries:
+
+`SourceAdapter → ParsedArtifact → EvidenceSpan → ExtractionRun → Observation/Entity/Relationship → PatternCandidate → InvestigationView`
+
+This keeps document ingestion replaceable and makes provenance mandatory before graph, hypothesis or pattern layers can consume an item.
