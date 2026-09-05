@@ -15,6 +15,8 @@ Reuse components, not an entire competitor. Keep Noema's evidence schema, episte
 | Graph extraction reference | Neo4j LLM Graph Builder | Ingestion patterns, schema-constrained extraction, provider adapters and graph preview | Cannibalise patterns and test fixtures, not the whole application. Neo4j should remain optional for the MVP. |
 | Community extraction / GraphRAG | Microsoft GraphRAG | Entity/relationship extraction, claims, community detection and community summaries | Study and selectively reuse methodology. The repository is now maintenance-oriented and warns about indexing cost, so do not adopt it wholesale. |
 | Scientific evidence pipeline | Insight Weaver | Claim/evidence modeling, cross-paper contradiction flow and hypothesis generation | Fork ideas and evaluation cases; do a code/license/dependency audit before copying modules. |
+| Graph investigation interaction | Truth Seeker | React Flow selection, Dagre layout and node-expansion interaction | Use as a small UX reference only. Its extraction, persistence and provenance are not production foundations. |
+| GraphRAG engine | LightRAG | Parsing, chunking, graph extraction, retrieval, storage adapters and integrity tooling | Best current backend candidate, but only behind Noema's evidence and retrieval interfaces. |
 | Forensic provenance UX | Incident Lens | Temporal graph, timestamped evidence, SUPPORTS/CONTRADICTS model | Reuse the schema and interaction ideas as a vertical reference, not as the core platform. |
 | Vector search | PostgreSQL + pgvector | Embeddings and filtered semantic retrieval next to relational evidence records | Start here. Do not introduce a separate vector database for the MVP. |
 | Statistical analysis | SciPy, scikit-learn, statsmodels, NetworkX | Clustering, anomaly detection, graph measures, significance tests | Adopt mature primitives; keep pattern definitions, multiple-testing policy and audit outputs in Noema-owned code. |
@@ -91,3 +93,70 @@ Use Insight Weaver as an executable reference and test corpus, not as a fork. Ex
 `SourceAdapter → ParsedArtifact → EvidenceSpan → ExtractionRun → Observation/Entity/Relationship → PatternCandidate → InvestigationView`
 
 This keeps document ingestion replaceable and makes provenance mandatory before graph, hypothesis or pattern layers can consume an item.
+
+## Truth Seeker audit
+
+Pinned reference: `tooling/truth-seeker` at upstream revision `2b3a23b`.
+
+### Reuse or adapt
+
+- The select-a-node, request expansion, merge results interaction
+- React Flow custom-node and hover-detail patterns
+- Dagre as a quick deterministic layout option for small investigation slices
+- Its narrow API surface as a prototype reference for `Investigate This`
+
+### Do not adopt unchanged
+
+- The frontend's full-graph re-layout after every expansion
+- Model output parsed by scraping JSON and falling back to Python literal evaluation
+- Raw source text interpolated directly into extraction prompts
+- Empty-result error handling that hides extraction failures
+- A backend without authentication, workspace isolation, persistence or evidence provenance
+- Generated directories such as `node_modules` and Python caches committed in the upstream tree
+
+### Licensing caution
+
+The README says MIT, but the pinned revision does not include a standalone licence file. Treat it as an interaction reference and do not copy source until the licensing artifact is confirmed.
+
+### Architectural decision
+
+Truth Seeker is not a product base. Recreate the expansion gesture against Noema's `InvestigationPlanner`, where the AI returns a limited, explainable slice and each new node resolves to evidence.
+
+## LightRAG audit
+
+Pinned reference: `tooling/lightrag` at upstream revision `b825a51`.
+
+### Reuse or adapt
+
+- Its mature ingestion, chunking and graph-aware retrieval pipeline
+- Storage abstraction patterns and workspace namespacing
+- Provenance sidecars for structured document elements
+- Provider, parser and storage adapter organization
+- Integrity checks, migrations, evaluation and tracing patterns
+- Graph, vector and key-value interfaces where they save implementation time
+
+### Keep behind Noema interfaces
+
+- Entity and relationship extraction
+- Graph-aware retrieval and query modes
+- Vector, graph and document-status storage backends
+- Model/provider selection and parsing strategies
+
+LightRAG's internal schema must not become Noema's canonical evidence model. Engine results enter the application through `RetrievalEngine` and must be promoted into Noema records only after provenance and deterministic model validation pass.
+
+### Scope control
+
+LightRAG supports a wide storage matrix. V1 should configure one operational path—PostgreSQL plus pgvector where practical—instead of inheriting every supported database. This keeps deployment and failure modes understandable while preserving the adapter boundary.
+
+### Licensing
+
+The pinned repository includes an MIT licence. Preserve its copyright and licence notice for any copied or distributed portions.
+
+## Noema contracts added
+
+The first product-owned boundary now lives in:
+
+- `lib/noema/evidence-model.ts` — sources, immutable evidence spans, extraction runs, epistemic nodes, investigation slices and deterministic integrity checks
+- `lib/noema/engine-contracts.ts` — adapters for connectors, parsers, retrieval engines, pattern detectors and investigation planning
+
+These contracts deliberately separate observations, relationships, patterns, hypotheses, contradictions and reviewed findings. They also model source-dependency groups so repeated reporting of the same source cannot be mistaken for independent corroboration.
