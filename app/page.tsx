@@ -1,39 +1,41 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 
 type Kind = "concept" | "evidence" | "source" | "pattern" | "hypothesis" | "contradiction";
 type Hub = { id:string; label:string; sub:string; x:number; y:number; kind:Kind; score:number };
+type LiveRecord = {id:string;title:string;year?:number;authors:string[];source:"Crossref"|"OpenAlex";sourceId:string;uri:string;doi?:string;retrievedAt:string;evidence:string};
+type InvestigationResult = {query:string;retrievedAt:string;liveSources:string[];records:LiveRecord[];pattern:string[]};
 
 const hubs: Hub[] = [
-  { id:"p27", label:"PATTERN 027", sub:"Shared directors → vendors → awards", x:48, y:44, kind:"pattern", score:82 },
-  { id:"companies", label:"Organisations", sub:"12,640 registry entities", x:25, y:25, kind:"concept", score:76 },
-  { id:"people", label:"People & directors", sub:"8,421 resolved identities", x:72, y:24, kind:"concept", score:71 },
-  { id:"contracts", label:"Contracts & awards", sub:"34,208 public records", x:21, y:67, kind:"concept", score:79 },
-  { id:"places", label:"Locations", sub:"6,301 normalised places", x:72, y:67, kind:"concept", score:88 },
-  { id:"hypothesis", label:"Coordinated network", sub:"Hypothesis · low–moderate", x:49, y:80, kind:"hypothesis", score:54 },
-  { id:"contra", label:"Independent tenders", sub:"Contradiction · 11 records", x:86, y:46, kind:"contradiction", score:73 },
+  {id:"p27",label:"PATTERN 027",sub:"Shared directors → vendors → awards",x:48,y:44,kind:"pattern",score:82},
+  {id:"companies",label:"Organisations",sub:"12,640 registry entities",x:25,y:25,kind:"concept",score:76},
+  {id:"people",label:"People & directors",sub:"8,421 resolved identities",x:72,y:24,kind:"concept",score:71},
+  {id:"contracts",label:"Contracts & awards",sub:"34,208 public records",x:21,y:67,kind:"concept",score:79},
+  {id:"places",label:"Locations",sub:"6,301 normalised places",x:72,y:67,kind:"concept",score:88},
+  {id:"hypothesis",label:"Coordinated network",sub:"Hypothesis · low–moderate",x:49,y:80,kind:"hypothesis",score:54},
+  {id:"contra",label:"Independent tenders",sub:"Contradiction · 11 records",x:86,y:46,kind:"contradiction",score:73},
 ];
 
-const copy: Record<string, {k:string; title:string; body:string; metrics:string[]}> = {
-  p27:{k:"Discovered pattern",title:"Shared directors → related vendors → public awards",body:"A recurring ownership and procurement path appears across otherwise separate datasets. It is a candidate pattern, not evidence of coordination or wrongdoing.",metrics:["47 records","8 source systems","5 jurisdictions"]},
+const copy:Record<string,{k:string;title:string;body:string;metrics:string[]}>= {
+  p27:{k:"Discovered pattern",title:"Shared directors → related vendors → public awards",body:"A recurring ownership and procurement path appears across otherwise separate datasets. It is a candidate pattern, not evidence of coordination or wrongdoing.",metrics:["47 records","8 sources","5 jurisdictions"]},
   companies:{k:"Entity cluster",title:"Organisations",body:"Companies, public bodies, research institutions and vendors resolved across registry records, filings, contracts and uploaded evidence.",metrics:["12,640 entities","91% resolved","14 databases"]},
   people:{k:"Entity cluster",title:"People & directors",body:"Named people matched across directorships, filings, publications and awards. Ambiguous identities remain separated until corroborated.",metrics:["8,421 identities","613 ambiguous","12 databases"]},
-  contracts:{k:"Record cluster",title:"Contracts & awards",body:"Tender notices, award records, invoices and amendments normalised into one timeline while retaining their original identifiers and source links.",metrics:["34,208 records","7 jurisdictions","4 source types"]},
+  contracts:{k:"Record cluster",title:"Contracts & awards",body:"Tender notices, award records, invoices and amendments normalised into one timeline while retaining original identifiers.",metrics:["34,208 records","7 jurisdictions","4 source types"]},
   places:{k:"Entity cluster",title:"Locations",body:"Addresses, facilities and geographic references normalised across source systems, with confidence preserved for inferred matches.",metrics:["6,301 places","22 countries","438 uncertain"]},
-  hypothesis:{k:"Hypothesis",title:"Coordinated supplier network",body:"A possible explanation for the repeated ownership and award structure. Common professional services and market concentration remain plausible alternatives.",metrics:["9 supporting","11 against","Low–moderate"]},
+  hypothesis:{k:"Hypothesis",title:"Coordinated supplier network",body:"A possible explanation for the repeated ownership and award structure. Common professional services and market concentration remain plausible alternatives.",metrics:["9 supporting","11 against","Low confidence"]},
   contra:{k:"Contradiction",title:"Independent tender processes",body:"Eleven award records contain documented competitive processes that weaken a single coordinated-network explanation.",metrics:["11 records","6 authorities","Material challenge"]},
 };
 
-const connectors = [
-  {name:"Companies House",type:"Company registry",state:"ready",items:"6,204"},
-  {name:"SEC EDGAR",type:"Company filings",state:"ready",items:"3,912"},
-  {name:"OpenCorporates",type:"Global registry index",state:"ready",items:"2,524"},
-  {name:"AusTender",type:"Public procurement",state:"syncing",items:"28,440"},
-  {name:"Crossref",type:"Research metadata",state:"ready",items:"1,806"},
-  {name:"GDELT",type:"Global events & news",state:"available",items:"—"},
-  {name:"PubMed",type:"Biomedical literature",state:"available",items:"—"},
-  {name:"Local evidence vault",type:"PDF · CSV · XLSX · JSON",state:"ready",items:"184"},
+const connectors=[
+  {name:"Crossref",type:"Research metadata API",state:"live",items:"search"},
+  {name:"OpenAlex",type:"Open scholarly graph API",state:"live",items:"search"},
+  {name:"Companies House",type:"Company registry",state:"planned",items:"—"},
+  {name:"SEC EDGAR",type:"Company filings",state:"planned",items:"—"},
+  {name:"OpenCorporates",type:"Global registry index",state:"planned",items:"—"},
+  {name:"AusTender",type:"Public procurement",state:"planned",items:"—"},
+  {name:"GDELT",type:"Global events and news",state:"planned",items:"—"},
+  {name:"Local evidence vault",type:"PDF, CSV, XLSX and JSON",state:"planned",items:"—"},
 ];
 
 const colors:Record<Kind,string>={concept:"#b8ff57",evidence:"#f3ef72",source:"#8b91a5",pattern:"#b975ff",hypothesis:"#58d8ff",contradiction:"#ff625f"};
@@ -41,76 +43,69 @@ const colors:Record<Kind,string>={concept:"#b8ff57",evidence:"#f3ef72",source:"#
 export default function Home(){
   const [active,setActive]=useState("p27");
   const [selected,setSelected]=useState<string[]>(["companies","people","contracts"]);
-  const [filters,setFilters]=useState<Record<Kind,boolean>>({concept:true,evidence:true,source:true,pattern:true,hypothesis:true,contradiction:true});
   const [panel,setPanel]=useState<"inspect"|"sources"|"controls">("sources");
   const [aiOpen,setAiOpen]=useState(false);
   const [surprise,setSurprise]=useState(false);
-  const [nodeSize,setNodeSize]=useState(50);
-  const [linkFade,setLinkFade]=useState(38);
+  const [query,setQuery]=useState("graph-based evidence discovery");
+  const [result,setResult]=useState<InvestigationResult|null>(null);
+  const [activeLiveId,setActiveLiveId]=useState<string|null>(null);
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
 
-  const satellites=useMemo(()=>hubs.flatMap((h,hi)=>Array.from({length:hi===0?18:hi===6?8:12},(_,i)=>{
-    const angle=(i/(hi===0?18:hi===6?8:12))*Math.PI*2+(hi*.37);
-    const radius=(hi===0?10:7.2)+(i%3)*2.1;
+  const satellites=useMemo(()=>hubs.flatMap((hub,hubIndex)=>Array.from({length:hubIndex===0?18:hubIndex===6?8:12},(_,index)=>{
+    const total=hubIndex===0?18:hubIndex===6?8:12;
+    const angle=(index/total)*Math.PI*2+(hubIndex*.37);
+    const radius=(hubIndex===0?10:7.2)+(index%3)*2.1;
     const kinds:Kind[]=["evidence","source","evidence","evidence","source","evidence"];
-    return {id:`${h.id}-${i}`,hub:h.id,x:h.x+Math.cos(angle)*radius,y:h.y+Math.sin(angle)*radius*.82,kind:kinds[(i+hi)%kinds.length],r:2.1+(i%4)*.45};
+    return {id:`${hub.id}-${index}`,hub:hub.id,x:Number((hub.x+Math.cos(angle)*radius).toFixed(3)),y:Number((hub.y+Math.sin(angle)*radius*.82).toFixed(3)),kind:kinds[(index+hubIndex)%kinds.length],r:2.1+(index%4)*.45};
   })),[]);
-  const visibleHubs=hubs.filter(h=>filters[h.kind]);
-  const d=copy[active]||copy.p27;
-  function toggle(id:string){setActive(id);setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id].slice(-4));}
+  const livePositions=useMemo(()=>result?.records.map((record,index)=>{
+    const angle=(index/result.records.length)*Math.PI*2-Math.PI/2;
+    const ring=index%2===0?28:36;
+    return {...record,x:Number((48+Math.cos(angle)*ring).toFixed(3)),y:Number((48+Math.sin(angle)*ring*.72).toFixed(3))};
+  })??[],[result]);
+  const d=copy[active]??copy.p27;
+  const activeLive=result?.records.find(record=>record.id===activeLiveId);
+
+  function toggle(id:string){setActive(id);setPanel("inspect");setSelected(current=>current.includes(id)?current.filter(item=>item!==id):[...current,id].slice(-4))}
   function investigate(){setActive("p27");setAiOpen(true);setSurprise(false)}
-  function surpriseMe(){setSurprise(true);setActive("p27")}
+  async function runLiveInvestigation(event?:FormEvent){
+    event?.preventDefault();
+    if(query.trim().length<3)return;
+    setLoading(true);setError("");setSurprise(false);setAiOpen(false);
+    try{
+      const response=await fetch(`/api/investigate?q=${encodeURIComponent(query.trim())}`);
+      const payload=await response.json() as InvestigationResult&{error?:string};
+      if(!response.ok)throw new Error(payload.error||"Connected-source search failed.");
+      setResult(payload);setActiveLiveId(payload.records[0]?.id??null);setPanel("inspect");setSelected([]);
+    }catch(reason){setError(reason instanceof Error?reason.message:"Connected-source search failed.")}
+    finally{setLoading(false)}
+  }
 
   return <main className="dark-app">
-    <header className="dark-topbar">
-      <div className="wordmark"><i>∿</i> NOEMA</div>
-      <div className="investigation-title"><span>EVIDENCE NETWORK</span><b>Unified knowledge graph</b><em>8 SOURCES ACTIVE</em></div>
-      <div className="top-tools"><button>⌕</button><button>↧</button><button>Share</button><span>TY</span></div>
-    </header>
-
+    <header className="dark-topbar"><div className="wordmark"><i>∿</i> NOEMA</div><div className="investigation-title"><span>EVIDENCE NETWORK</span><b>{result?result.query:"Unified knowledge graph"}</b><em>2 LIVE SOURCES</em></div><div className="top-tools"><button aria-label="Search">⌕</button><button aria-label="Export">↧</button><button>Share</button><span>TY</span></div></header>
     <section className="graph-stage">
-      <div className="stage-tools">
-        <button className="active">◎ Graph</button><button>≋ Timeline</button><button>⌖ Geography</button>
-        <span />
-        <button onClick={()=>setSurprise(false)}>Fit all</button><button onClick={surpriseMe} className="magic">✦ Surprise me</button>
-      </div>
-      <div className="map-meta"><span className="live-dot"/> Live corpus <b>·</b> 62,184 nodes <b>·</b> 148,920 relationships <b>·</b> 8 sources</div>
-      <svg className="network" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Evidence relationship map">
-        <defs><radialGradient id="halo"><stop offset="0" stopColor="#ba75ff" stopOpacity=".26"/><stop offset="1" stopColor="#ba75ff" stopOpacity="0"/></radialGradient></defs>
-        <circle cx="48" cy="44" r="23" fill="url(#halo)"/>
-        {visibleHubs.flatMap((h,hi)=>satellites.filter(s=>s.hub===h.id&&filters[s.kind]).map(s=><line key={`l-${s.id}`} x1={h.x} y1={h.y} x2={s.x} y2={s.y} style={{opacity:.14+(linkFade/200)}}/>))}
-        {[["p27","companies"],["p27","people"],["p27","contracts"],["p27","places"],["p27","hypothesis"],["people","contra"],["contracts","contra"],["hypothesis","contracts"]].map(([a,b])=>{const x=hubs.find(h=>h.id===a)!;const y=hubs.find(h=>h.id===b)!;return <line key={`${a}${b}`} x1={x.x} y1={x.y} x2={y.x} y2={y.y} className={b==="contra"?"challenge":"major"}/>})}
-        {satellites.filter(s=>filters[s.kind]).map(s=><circle key={s.id} cx={s.x} cy={s.y} r={(s.r*(.65+nodeSize/100))/10} fill={colors[s.kind]} className="satellite" onClick={()=>{setActive(s.hub);setPanel("inspect")}}><title>{s.kind} linked to {copy[s.hub]?.title}</title></circle>)}
+      <div className="stage-tools"><button className="active">◎ Graph</button><button>≋ Timeline</button><button>⌖ Geography</button><span/><button onClick={()=>setSurprise(false)}>Fit all</button><button onClick={()=>{setSurprise(true);setResult(null)}} className="magic">✦ Surprise me</button></div>
+      <form className="live-search" onSubmit={runLiveInvestigation}><input aria-label="Investigation query" value={query} onChange={event=>setQuery(event.target.value)} placeholder="Investigate across live sources…"/><button disabled={loading}>{loading?"Searching…":"Build live graph"}</button></form>
+      <div className="map-meta"><span className="live-dot"/> {result?`${result.records.length} live records · ${result.liveSources.join(" + ")}`:"Demo corpus · run a live search to replace it"}</div>
+      {error&&<div className="live-error" role="alert">{error}</div>}
+      <svg className="network" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Evidence relationship map"><defs><radialGradient id="halo"><stop offset="0" stopColor="#ba75ff" stopOpacity=".26"/><stop offset="1" stopColor="#ba75ff" stopOpacity="0"/></radialGradient></defs><circle cx="48" cy="44" r="23" fill="url(#halo)"/>
+        {!result&&hubs.flatMap(hub=>satellites.filter(node=>node.hub===hub.id).map(node=><line key={`l-${node.id}`} x1={hub.x} y1={hub.y} x2={node.x} y2={node.y} style={{opacity:.33}}/>))}
+        {!result&&[["p27","companies"],["p27","people"],["p27","contracts"],["p27","places"],["p27","hypothesis"],["people","contra"],["contracts","contra"],["hypothesis","contracts"]].map(([a,b])=>{const from=hubs.find(h=>h.id===a)!;const to=hubs.find(h=>h.id===b)!;return <line key={`${a}${b}`} x1={from.x} y1={from.y} x2={to.x} y2={to.y} className={b==="contra"?"challenge":"major"}/>})}
+        {!result&&satellites.map(node=><circle key={node.id} cx={node.x} cy={node.y} r={node.r/8} fill={colors[node.kind]} className="satellite" onClick={()=>{setActive(node.hub);setPanel("inspect")}}><title>{`${node.kind} linked to ${copy[node.hub]?.title}`}</title></circle>)}
+        {result&&livePositions.map(record=><line key={`line-${record.id}`} x1="48" y1="48" x2={record.x} y2={record.y} className="major"/>)}
       </svg>
-      {visibleHubs.map(h=><button key={h.id} onClick={()=>toggle(h.id)} className={`hub hub-${h.kind} ${active===h.id?"active":""} ${selected.includes(h.id)?"selected":""}`} style={{left:`${h.x}%`,top:`${h.y}%`,"--node-color":colors[h.kind]} as React.CSSProperties}>
-        <i/><strong>{h.label}</strong><small>{h.sub}</small>
-      </button>)}
-
-      {surprise&&<div className="anomaly"><span>CROSS-DATABASE ASSOCIATION · 04</span><b>Three vendors share directors, addresses and award timing</b><p>Detected across company registries, filings and procurement records</p><button onClick={()=>setSurprise(false)}>Open as investigation →</button></div>}
-
-      <div className="map-key"><b>MAP KEY</b>{(["evidence","concept","pattern","hypothesis","contradiction"] as Kind[]).map(k=><span key={k}><i style={{background:colors[k]}}/>{k}</span>)}</div>
-      <div className="map-nav"><button>+</button><button>−</button><button>⌗</button></div>
-      <div className="selected-tray"><span>{selected.length}</span><div><b>Nodes selected</b><small>{selected.map(id=>copy[id]?.title).join(" · ")}</small></div><button onClick={()=>setSelected([])}>Clear</button><button className="run" disabled={selected.length<2} onClick={investigate}>✦ Investigate relationship</button></div>
+      {!result&&hubs.map(hub=><button key={hub.id} onClick={()=>toggle(hub.id)} className={`hub hub-${hub.kind} ${active===hub.id?"active":""} ${selected.includes(hub.id)?"selected":""}`} style={{left:`${hub.x}%`,top:`${hub.y}%`,"--node-color":colors[hub.kind]} as React.CSSProperties}><i/><strong>{hub.label}</strong><small>{hub.sub}</small></button>)}
+      {result&&<button className="hub hub-pattern active live-centre" style={{left:"48%",top:"48%","--node-color":colors.pattern} as React.CSSProperties}><i/><strong>LIVE INVESTIGATION</strong><small>{result.pattern.length?result.pattern.join(" · "):result.query}</small></button>}
+      {result&&livePositions.map(record=><button key={record.id} onClick={()=>{setActiveLiveId(record.id);setPanel("inspect")}} className={`hub live-record ${activeLiveId===record.id?"active":""}`} style={{left:`${record.x}%`,top:`${record.y}%`,"--node-color":record.source==="Crossref"?colors.evidence:colors.hypothesis} as React.CSSProperties}><i/><strong>{record.source} · {record.year??"n.d."}</strong><small>{record.title}</small></button>)}
+      {surprise&&<div className="anomaly"><span>DEMO PATTERN · 04</span><b>Three vendors share directors, addresses and award timing</b><p>Illustrative data—run a live search for retrieved evidence.</p><button onClick={()=>setSurprise(false)}>Close</button></div>}
+      <div className="map-key"><b>MAP KEY</b>{(["evidence","concept","pattern","hypothesis","contradiction"] as Kind[]).map(kind=><span key={kind}><i style={{background:colors[kind]}}/>{kind}</span>)}</div>
+      {!result?<div className="selected-tray"><span>{selected.length}</span><div><b>Nodes selected</b><small>{selected.map(id=>copy[id]?.title).join(" · ")}</small></div><button onClick={()=>setSelected([])}>Clear</button><button className="run" disabled={selected.length<2} onClick={investigate}>✦ Investigate relationship</button></div>:<div className="selected-tray live-tray"><span>{result.records.length}</span><div><b>Live evidence graph</b><small>{result.liveSources.join(" + ")} · source identifiers retained</small></div><button onClick={()=>{setResult(null);setActiveLiveId(null)}}>Return to demo</button></div>}
     </section>
-
-    <aside className="right-dock">
-      <div className="dock-tabs"><button onClick={()=>setPanel("inspect")} className={panel==="inspect"?"active":""}>Inspect</button><button onClick={()=>setPanel("sources")} className={panel==="sources"?"active":""}>Sources</button><button onClick={()=>setPanel("controls")} className={panel==="controls"?"active":""}>Controls</button><button>×</button></div>
-      {panel==="inspect"?<div className="inspector">
-        <div className="evidence-status"><i style={{background:colors[hubs.find(h=>h.id===active)?.kind||"pattern"]}}/><span>{d.k}</span><em>{hubs.find(h=>h.id===active)?.score||82}/100</em></div>
-        <h1>{d.title}</h1><p>{d.body}</p>
-        <div className="metric-grid">{d.metrics.map((m,i)=><div key={m}><b>{m.split(" ")[0]}</b><span>{m.substring(m.indexOf(" ")+1)}</span></div>)}</div>
-        <div className="integrity"><span>Evidence integrity</span><b>{hubs.find(h=>h.id===active)?.score||82}%</b><div><i style={{width:`${hubs.find(h=>h.id===active)?.score||82}%`}}/></div></div>
-        <section className="lineage"><header><span>PROVENANCE CHAIN</span><b>3 systems</b></header><div><i/><p><b>Registry record</b><span>Original entity ID · retrieved 2h ago</span></p></div><div><i/><p><b>Procurement award</b><span>Source record and amendment history</span></p></div><div><i/><p><b>Resolved relationship</b><span>Match confidence 0.91 · human unreviewed</span></p></div></section>
-        <button className="open-source">Open original evidence <span>↗</span></button>
-        <div className="challenge-actions"><button onClick={()=>setActive("contra")}>Show evidence against</button><button onClick={()=>setActive("hypoxia")}>Create hypothesis</button></div>
-      </div>:panel==="sources"?<div className="sources-panel"><header><span>CONNECTED DATA</span><button>＋ Add source</button></header><p>Each connector retains source IDs, retrieval time and lineage. “Available” sources are not connected yet.</p><div className="source-summary"><div><b>8</b><span>configured</span></div><div><b>7</b><span>healthy</span></div><div><b>47k</b><span>records</span></div></div><div className="connector-list">{connectors.map(c=><button key={c.name} onClick={()=>setPanel("inspect")}><i className={`connector-icon ${c.state}`}>{c.name.slice(0,1)}</i><span><b>{c.name}</b><small>{c.type}</small></span><em className={c.state}>{c.state}</em><strong>{c.items}</strong></button>)}</div><button className="connector-catalog">Browse connector catalogue →</button></div>:<div className="controls">
-        <label>Search graph<input placeholder="Search entities, evidence…"/></label>
-        <section><header>NODE TYPES <button>Reset</button></header>{(Object.keys(filters) as Kind[]).map(k=><label key={k}><span><i style={{background:colors[k]}}/>{k}</span><input type="checkbox" checked={filters[k]} onChange={()=>setFilters(f=>({...f,[k]:!f[k]}))}/></label>)}</section>
-        <section><header>DISPLAY</header><label>Node size <input type="range" value={nodeSize} onChange={e=>setNodeSize(+e.target.value)}/></label><label>Link visibility <input type="range" value={linkFade} onChange={e=>setLinkFade(+e.target.value)}/></label><label>Show labels <input type="checkbox" defaultChecked/></label><label>Auto-fit clusters <input type="checkbox" defaultChecked/></label></section>
-        <section><header>ANALYTICAL LENS</header><div className="lens-grid"><button className="active">Patterns</button><button>Historical</button><button>Biological</button><button onClick={()=>setActive("contra")}>Sceptic</button></div></section>
-      </div>}
+    <aside className="right-dock"><div className="dock-tabs"><button onClick={()=>setPanel("inspect")} className={panel==="inspect"?"active":""}>Inspect</button><button onClick={()=>setPanel("sources")} className={panel==="sources"?"active":""}>Sources</button><button onClick={()=>setPanel("controls")} className={panel==="controls"?"active":""}>Controls</button><button aria-label="Close panel">×</button></div>
+      {panel==="inspect"?<div className="inspector">{activeLive?<><div className="evidence-status"><i style={{background:activeLive.source==="Crossref"?colors.evidence:colors.hypothesis}}/><span>Retrieved evidence · {activeLive.source}</span><em>{activeLive.year??"n.d."}</em></div><h1>{activeLive.title}</h1><p>{activeLive.evidence}</p><div className="metric-grid"><div><b>{activeLive.authors.length}</b><span>authors shown</span></div><div><b>{activeLive.source}</b><span>live source</span></div><div><b>{activeLive.doi?"DOI":"ID"}</b><span>{activeLive.sourceId.slice(0,16)}</span></div></div><section className="lineage"><header><span>PROVENANCE CHAIN</span><b>live</b></header><div><i/><p><b>{activeLive.source} API</b><span>Retrieved {new Date(activeLive.retrievedAt).toLocaleString()}</span></p></div><div><i/><p><b>Immutable source identifier</b><span>{activeLive.sourceId}</span></p></div></section><a className="open-source" href={activeLive.uri} target="_blank" rel="noreferrer">Open original evidence <span>↗</span></a></>:<><div className="evidence-status"><i style={{background:colors[hubs.find(h=>h.id===active)?.kind??"pattern"]}}/><span>{d.k} · demo</span><em>{hubs.find(h=>h.id===active)?.score??82}/100</em></div><h1>{d.title}</h1><p>{d.body}</p><div className="metric-grid">{d.metrics.map(metric=><div key={metric}><b>{metric.split(" ")[0]}</b><span>{metric.substring(metric.indexOf(" ")+1)}</span></div>)}</div><section className="lineage"><header><span>PROVENANCE CHAIN</span><b>illustrative</b></header><div><i/><p><b>Prototype record</b><span>Use live search for source-backed evidence</span></p></div></section><div className="challenge-actions"><button onClick={()=>setActive("contra")}>Show evidence against</button><button onClick={()=>setActive("hypothesis")}>Create hypothesis</button></div></>}</div>:panel==="sources"?<div className="sources-panel"><header><span>DATA CONNECTORS</span><button onClick={()=>setPanel("controls")}>Search live sources</button></header><p>Crossref and OpenAlex are connected now. Other sources are clearly marked as planned.</p><div className="source-summary"><div><b>2</b><span>live now</span></div><div><b>6</b><span>planned</span></div><div><b>{result?.records.length??0}</b><span>retrieved</span></div></div><div className="connector-list">{connectors.map(connector=><button key={connector.name} onClick={()=>connector.state==="live"&&setPanel("controls")}><i className={`connector-icon ${connector.state}`}>{connector.name[0]}</i><span><b>{connector.name}</b><small>{connector.type}</small></span><em className={connector.state}>{connector.state}</em><strong>{connector.items}</strong></button>)}</div></div>:<div className="controls"><form onSubmit={runLiveInvestigation}><label>Search connected sources<input aria-label="Connected source query" value={query} onChange={event=>setQuery(event.target.value)} placeholder="Topic, entity or relationship"/></label><button className="control-run" disabled={loading}>{loading?"Retrieving evidence…":"Build investigation graph"}</button></form><section><header>ACTIVE CONNECTORS</header><label><span><i style={{background:colors.evidence}}/>Crossref</span><b>LIVE</b></label><label><span><i style={{background:colors.hypothesis}}/>OpenAlex</span><b>LIVE</b></label></section><section><header>INVESTIGATION LENSES</header><div className="lens-grid"><button type="button" className="active">Patterns</button><button type="button" onClick={()=>setActive("contra")}>Sceptic</button></div></section></div>}
     </aside>
-
-    <button className={`ai-tab ${aiOpen?"open":""}`} onClick={()=>setAiOpen(!aiOpen)}>✦ AI Investigator <span>{aiOpen?"×":"↑"}</span></button>
-    {aiOpen&&<div className="ai-drawer"><header><b>✦ AI Investigator</b><button onClick={()=>setAiOpen(false)}>×</button></header><div className="ai-copy">I searched the selected entities across eight connected sources. Pattern 027 is the strongest cross-database relationship, but eleven tender records weaken a coordination hypothesis.</div><div className="ai-chips"><button onClick={()=>setActive("contra")}>Find evidence against this</button><button>Only independent sources</button></div><div className="ai-input">Ask across all connected evidence… <button>↑</button></div></div>}
+    {!result&&<button className={`ai-tab ${aiOpen?"open":""}`} onClick={()=>setAiOpen(!aiOpen)}>✦ AI Investigator <span>{aiOpen?"×":"↑"}</span></button>}
+    {aiOpen&&<div className="ai-drawer"><header><b>✦ Prototype Investigator</b><button onClick={()=>setAiOpen(false)}>×</button></header><div className="ai-copy">This analysis uses illustrative data. Search Crossref and OpenAlex above to build a real, source-linked evidence graph.</div><div className="ai-chips"><button onClick={()=>setActive("contra")}>Find evidence against this</button><button onClick={()=>setActive("hypothesis")}>Create hypothesis</button></div></div>}
   </main>
 }
