@@ -2,161 +2,104 @@
 
 import { useMemo, useState } from "react";
 
-type NodeKind = "concept" | "pattern" | "hypothesis" | "evidence" | "contradiction" | "source";
-type GraphNode = {
-  id: string;
-  label: string;
-  kind: NodeKind;
-  x: number;
-  y: number;
-  eyebrow?: string;
-  meta?: string;
-  hidden?: boolean;
-};
+type Kind = "concept" | "evidence" | "source" | "pattern" | "hypothesis" | "contradiction";
+type Hub = { id:string; label:string; sub:string; x:number; y:number; kind:Kind; score:number };
 
-const baseNodes: GraphNode[] = [
-  { id: "altered", label: "Altered states", kind: "concept", x: 47, y: 43, eyebrow: "Core concept", meta: "63 evidence items" },
-  { id: "fasting", label: "Fasting", kind: "concept", x: 21, y: 25, eyebrow: "Practice", meta: "22 sources" },
-  { id: "breath", label: "Rhythmic breathing", kind: "concept", x: 23, y: 58, eyebrow: "Practice", meta: "17 sources" },
-  { id: "dark", label: "Darkness", kind: "concept", x: 43, y: 76, eyebrow: "Condition", meta: "14 sources" },
-  { id: "pattern27", label: "Fasting + isolation + rhythmic breathing", kind: "pattern", x: 48, y: 20, eyebrow: "Pattern 027", meta: "High strength" },
-  { id: "hypoxia", label: "Hypoxia / hypocapnia", kind: "hypothesis", x: 74, y: 29, eyebrow: "Hypothesis", meta: "Low–moderate" },
-  { id: "botanical", label: "Botanical exposure", kind: "hypothesis", x: 76, y: 62, eyebrow: "Alternative", meta: "Contested" },
-  { id: "evidence1", label: "Vision fast account", kind: "evidence", x: 14, y: 78, eyebrow: "Evidence", meta: "c. 420 BCE · Greece" },
-  { id: "contra", label: "Breathwork absent", kind: "contradiction", x: 65, y: 82, eyebrow: "Contradiction", meta: "8 source records" },
-  { id: "source", label: "Ritual purification survey", kind: "source", x: 87, y: 84, eyebrow: "Source", meta: "Kline, 1987 · p. 112" },
+const hubs: Hub[] = [
+  { id:"p27", label:"PATTERN 027", sub:"Fasting → darkness → breathwork", x:48, y:44, kind:"pattern", score:82 },
+  { id:"fasting", label:"Fasting", sub:"22 sources", x:25, y:25, kind:"concept", score:76 },
+  { id:"darkness", label:"Darkness", sub:"14 sources", x:72, y:24, kind:"concept", score:71 },
+  { id:"breath", label:"Rhythmic breathing", sub:"17 sources", x:21, y:67, kind:"concept", score:79 },
+  { id:"altered", label:"Altered state", sub:"63 observations", x:72, y:67, kind:"concept", score:88 },
+  { id:"hypoxia", label:"Hypoxia", sub:"Hypothesis · low–moderate", x:49, y:80, kind:"hypothesis", score:54 },
+  { id:"contra", label:"Breathwork absent", sub:"Contradiction · 8 records", x:86, y:46, kind:"contradiction", score:73 },
 ];
 
-const edges = [
-  ["fasting", "pattern27"], ["breath", "pattern27"], ["pattern27", "altered"], ["breath", "altered"],
-  ["dark", "altered"], ["pattern27", "hypoxia"], ["altered", "botanical"], ["evidence1", "fasting"],
-  ["contra", "pattern27"], ["source", "contra"], ["hypoxia", "altered"], ["botanical", "contra"],
-];
-
-const details: Record<string, { title: string; summary: string; tags: string[] }> = {
-  altered: { title: "Altered states", summary: "Reports of visionary, dissociative or ecstatic experience. The label preserves the source wording and does not assume a biological mechanism.", tags: ["63 evidence items", "29 independent groups", "6 regions"] },
-  fasting: { title: "Fasting", summary: "Food restriction lasting from one day to several weeks, recorded as preparation, purification or ordeal.", tags: ["22 sources", "11 cultural groups", "1,800-year span"] },
-  breath: { title: "Rhythmic breathing", summary: "Deliberate repeated breathing patterns, including rapid respiration and extended breath holds.", tags: ["17 sources", "12 direct observations", "5 inferred"] },
-  dark: { title: "Darkness", summary: "Ritual confinement in caves, chambers or unlit rooms, often alongside reduced social and sensory input.", tags: ["14 sources", "9 independent groups", "4 regions"] },
-  pattern27: { title: "Fasting + isolation + rhythmic breathing", summary: "This sequence recurs across independent accounts more often than expected in the corpus. It is an observed pattern—not a causal claim.", tags: ["Strength · High", "17 sources", "9 independent groups"] },
-  hypoxia: { title: "Hypoxia / hypocapnia", summary: "A possible physiological pathway generated from the recurring breathwork sequence. Current evidence is indirect and competing mechanisms remain plausible.", tags: ["Confidence · Low–moderate", "6 supporting", "4 against"] },
-  botanical: { title: "Botanical exposure", summary: "An alternative explanation: psychoactive preparations may be omitted, mistranslated or described symbolically in some accounts.", tags: ["Confidence · Contested", "5 supporting", "7 against"] },
-  evidence1: { title: "Vision fast account", summary: "“After the third night without food, the initiate entered the stone chamber and reported a bright presence.”", tags: ["Primary translation", "c. 420 BCE", "Page 48"] },
-  contra: { title: "Breathwork absent", summary: "Eight otherwise similar rites describe fasting and darkness but contain no breath practice. Two explicitly describe normal, quiet breathing.", tags: ["8 records", "5 independent groups", "Material challenge"] },
-  source: { title: "Ritual purification survey", summary: "Comparative ethnographic survey. This item is downstream of two earlier field reports and counts as one source group—not three confirmations.", tags: ["Kline, 1987", "Secondary source", "Lineage mapped"] },
+const copy: Record<string, {k:string; title:string; body:string; metrics:string[]}> = {
+  p27:{k:"Discovered pattern",title:"Fasting → darkness → rhythmic breathing",body:"This ordered sequence recurs across nine independent source groups more often than expected. It is a pattern, not a causal conclusion.",metrics:["17 sources","9 independent groups","6 geographies"]},
+  fasting:{k:"Concept",title:"Fasting",body:"Food restriction recorded as preparation, purification or ordeal. Six derivative retellings have been collapsed into their earliest source groups.",metrics:["22 sources","11 groups","1,800-year span"]},
+  darkness:{k:"Concept",title:"Darkness / sensory reduction",body:"Ritual confinement in caves, chambers or unlit rooms. The association remains after excluding three modern secondary surveys.",metrics:["14 sources","9 groups","4 regions"]},
+  breath:{k:"Concept",title:"Rhythmic breathing",body:"Deliberate rapid respiration, repeated breath cycles or extended breath holds. Five references are inferred rather than directly observed.",metrics:["17 sources","12 direct","5 inferred"]},
+  altered:{k:"Observation cluster",title:"Reported altered state",body:"Visionary, dissociative or ecstatic experiences, kept in the language of each source without assigning a biological mechanism.",metrics:["63 observations","29 groups","6 regions"]},
+  hypoxia:{k:"Hypothesis",title:"Hypoxia / hypocapnia pathway",body:"A plausible physiological mechanism generated from the recurring breathwork sequence. Evidence is indirect and botanical exposure remains an alternative.",metrics:["6 supporting","4 against","Low–moderate"]},
+  contra:{k:"Contradiction",title:"Breathwork absent",body:"Eight otherwise similar rites describe fasting and darkness but no breath practice. Two explicitly describe quiet, normal breathing.",metrics:["8 records","5 groups","Material challenge"]},
 };
 
-const kindLabel: Record<NodeKind, string> = { concept: "Concept", pattern: "Pattern", hypothesis: "Hypothesis", evidence: "Evidence", contradiction: "Contradiction", source: "Source" };
+const colors:Record<Kind,string>={concept:"#b8ff57",evidence:"#f3ef72",source:"#8b91a5",pattern:"#b975ff",hypothesis:"#58d8ff",contradiction:"#ff625f"};
 
-export default function Home() {
-  const [active, setActive] = useState("pattern27");
-  const [lens, setLens] = useState("Pattern");
-  const [selected, setSelected] = useState<string[]>(["fasting", "breath", "altered"]);
-  const [contradictions, setContradictions] = useState(false);
-  const [surprise, setSurprise] = useState(false);
-  const [message, setMessage] = useState("");
-  const [feed, setFeed] = useState(["I found a recurring sequence across nine independent source groups. I’ve separated the observation from two possible explanations."]);
+export default function Home(){
+  const [active,setActive]=useState("p27");
+  const [selected,setSelected]=useState<string[]>(["fasting","darkness","breath"]);
+  const [filters,setFilters]=useState<Record<Kind,boolean>>({concept:true,evidence:true,source:true,pattern:true,hypothesis:true,contradiction:true});
+  const [panel,setPanel]=useState<"inspect"|"controls">("inspect");
+  const [aiOpen,setAiOpen]=useState(false);
+  const [surprise,setSurprise]=useState(false);
+  const [nodeSize,setNodeSize]=useState(50);
+  const [linkFade,setLinkFade]=useState(38);
 
-  const visibleNodes = useMemo(() => baseNodes.filter(n => !contradictions || ["pattern27", "contra", "source", "botanical", "altered"].includes(n.id)), [contradictions]);
-  const selectedDetail = details[active];
+  const satellites=useMemo(()=>hubs.flatMap((h,hi)=>Array.from({length:hi===0?18:hi===6?8:12},(_,i)=>{
+    const angle=(i/(hi===0?18:hi===6?8:12))*Math.PI*2+(hi*.37);
+    const radius=(hi===0?10:7.2)+(i%3)*2.1;
+    const kinds:Kind[]=["evidence","source","evidence","evidence","source","evidence"];
+    return {id:`${h.id}-${i}`,hub:h.id,x:h.x+Math.cos(angle)*radius,y:h.y+Math.sin(angle)*radius*.82,kind:kinds[(i+hi)%kinds.length],r:2.1+(i%4)*.45};
+  })),[]);
+  const visibleHubs=hubs.filter(h=>filters[h.kind]);
+  const d=copy[active]||copy.p27;
+  function toggle(id:string){setActive(id);setSelected(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id].slice(-4));}
+  function investigate(){setActive("p27");setAiOpen(true);setSurprise(false)}
+  function surpriseMe(){setSurprise(true);setActive("darkness")}
 
-  function runInvestigation() {
-    setSurprise(false);
-    setActive("pattern27");
-    setFeed(f => [...f, `Investigated ${selected.length} selected concepts. Pattern 027 is the strongest independent relationship; 8 counterexamples remain visible.`]);
-  }
+  return <main className="dark-app">
+    <header className="dark-topbar">
+      <div className="wordmark"><i>∿</i> NOEMA</div>
+      <div className="investigation-title"><span>INVESTIGATION</span><b>Ancient altered states</b><em>LIVE MAP</em></div>
+      <div className="top-tools"><button>⌕</button><button>↧</button><button>Share</button><span>TY</span></div>
+    </header>
 
-  function ask(text = message) {
-    if (!text.trim()) return;
-    if (/against|contradiction|sceptic/i.test(text)) {
-      setContradictions(true); setActive("contra");
-      setFeed(f => [...f, "I switched to the sceptic slice. Eight records challenge the pattern; two explicitly describe normal breathing."]);
-    } else if (/surprise|missing/i.test(text)) {
-      triggerSurprise(); return;
-    } else {
-      setFeed(f => [...f, "I focused the canvas on the strongest evidence chain. The source panel preserves the original passage and dependency lineage."]);
-      setActive("evidence1");
-    }
-    setMessage("");
-  }
+    <section className="graph-stage">
+      <div className="stage-tools">
+        <button className="active">◎ Graph</button><button>≋ Timeline</button><button>⌖ Geography</button>
+        <span />
+        <button onClick={()=>setSurprise(false)}>Fit all</button><button onClick={surpriseMe} className="magic">✦ Surprise me</button>
+      </div>
+      <div className="map-meta"><span className="live-dot"/> Focused view <b>·</b> 94 of 1,842 nodes <b>·</b> 126 relationships</div>
+      <svg className="network" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Evidence relationship map">
+        <defs><radialGradient id="halo"><stop offset="0" stopColor="#ba75ff" stopOpacity=".26"/><stop offset="1" stopColor="#ba75ff" stopOpacity="0"/></radialGradient></defs>
+        <circle cx="48" cy="44" r="23" fill="url(#halo)"/>
+        {visibleHubs.flatMap((h,hi)=>satellites.filter(s=>s.hub===h.id&&filters[s.kind]).map(s=><line key={`l-${s.id}`} x1={h.x} y1={h.y} x2={s.x} y2={s.y} style={{opacity:.14+(linkFade/200)}}/>))}
+        {[["p27","fasting"],["p27","darkness"],["p27","breath"],["p27","altered"],["p27","hypoxia"],["darkness","contra"],["altered","contra"],["hypoxia","breath"]].map(([a,b])=>{const x=hubs.find(h=>h.id===a)!;const y=hubs.find(h=>h.id===b)!;return <line key={`${a}${b}`} x1={x.x} y1={x.y} x2={y.x} y2={y.y} className={b==="contra"?"challenge":"major"}/>})}
+        {satellites.filter(s=>filters[s.kind]).map(s=><circle key={s.id} cx={s.x} cy={s.y} r={(s.r*(.65+nodeSize/100))/10} fill={colors[s.kind]} className="satellite" onClick={()=>{setActive(s.hub);setPanel("inspect")}}><title>{s.kind} linked to {copy[s.hub]?.title}</title></circle>)}
+      </svg>
+      {visibleHubs.map(h=><button key={h.id} onClick={()=>toggle(h.id)} className={`hub hub-${h.kind} ${active===h.id?"active":""} ${selected.includes(h.id)?"selected":""}`} style={{left:`${h.x}%`,top:`${h.y}%`,"--node-color":colors[h.kind]} as React.CSSProperties}>
+        <i/><strong>{h.label}</strong><small>{h.sub}</small>
+      </button>)}
 
-  function triggerSurprise() {
-    setSurprise(true); setContradictions(false); setActive("dark");
-    setFeed(f => [...f, "Unexpected pattern: darkness appears after fasting in 71% of eligible ritual sequences, across four regions. Reporting conventions are a likely confounder."]);
-    setMessage("");
-  }
+      {surprise&&<div className="anomaly"><span>UNEXPECTED ASSOCIATION · 04</span><b>Darkness follows fasting in 71% of eligible sequences</b><p>Top 2.8% of corpus associations · replicated across 4 regions</p><button onClick={()=>setSurprise(false)}>Add to investigation →</button></div>}
 
-  function toggleSelect(id: string) {
-    setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id].slice(-3));
-    setActive(id);
-  }
+      <div className="map-key"><b>MAP KEY</b>{(["evidence","concept","pattern","hypothesis","contradiction"] as Kind[]).map(k=><span key={k}><i style={{background:colors[k]}}/>{k}</span>)}</div>
+      <div className="map-nav"><button>+</button><button>−</button><button>⌗</button></div>
+      <div className="selected-tray"><span>{selected.length}</span><div><b>Nodes selected</b><small>{selected.map(id=>copy[id]?.title).join(" · ")}</small></div><button onClick={()=>setSelected([])}>Clear</button><button className="run" disabled={selected.length<2} onClick={investigate}>✦ Investigate relationship</button></div>
+    </section>
 
-  return (
-    <main className="app-shell">
-      <header className="topbar">
-        <div className="brand"><span className="brand-mark">N</span><span>NOEMA</span></div>
-        <nav className="crumbs" aria-label="Investigation breadcrumb"><span>Investigations</span><b>/</b><strong>Ancient altered states</strong></nav>
-        <div className="top-actions"><button className="icon-button" aria-label="Search">⌕</button><button className="share">Share investigation</button><span className="avatar">TY</span></div>
-      </header>
+    <aside className="right-dock">
+      <div className="dock-tabs"><button onClick={()=>setPanel("inspect")} className={panel==="inspect"?"active":""}>Inspect</button><button onClick={()=>setPanel("controls")} className={panel==="controls"?"active":""}>Controls</button><button>×</button></div>
+      {panel==="inspect"?<div className="inspector">
+        <div className="evidence-status"><i style={{background:colors[hubs.find(h=>h.id===active)?.kind||"pattern"]}}/><span>{d.k}</span><em>{hubs.find(h=>h.id===active)?.score||82}/100</em></div>
+        <h1>{d.title}</h1><p>{d.body}</p>
+        <div className="metric-grid">{d.metrics.map((m,i)=><div key={m}><b>{m.split(" ")[0]}</b><span>{m.substring(m.indexOf(" ")+1)}</span></div>)}</div>
+        <div className="integrity"><span>Evidence integrity</span><b>{hubs.find(h=>h.id===active)?.score||82}%</b><div><i style={{width:`${hubs.find(h=>h.id===active)?.score||82}%`}}/></div></div>
+        <section className="lineage"><header><span>PROVENANCE CHAIN</span><b>3 layers</b></header><div><i/><p><b>Direct observation</b><span>Field account · translated passage</span></p></div><div><i/><p><b>Source group</b><span>Earliest independent record · c. 420 BCE</span></p></div><div><i/><p><b>Extracted relationship</b><span>Model confidence 0.91 · human unreviewed</span></p></div></section>
+        <button className="open-source">Open original evidence <span>↗</span></button>
+        <div className="challenge-actions"><button onClick={()=>setActive("contra")}>Show evidence against</button><button onClick={()=>setActive("hypoxia")}>Create hypothesis</button></div>
+      </div>:<div className="controls">
+        <label>Search graph<input placeholder="Search entities, evidence…"/></label>
+        <section><header>NODE TYPES <button>Reset</button></header>{(Object.keys(filters) as Kind[]).map(k=><label key={k}><span><i style={{background:colors[k]}}/>{k}</span><input type="checkbox" checked={filters[k]} onChange={()=>setFilters(f=>({...f,[k]:!f[k]}))}/></label>)}</section>
+        <section><header>DISPLAY</header><label>Node size <input type="range" value={nodeSize} onChange={e=>setNodeSize(+e.target.value)}/></label><label>Link visibility <input type="range" value={linkFade} onChange={e=>setLinkFade(+e.target.value)}/></label><label>Show labels <input type="checkbox" defaultChecked/></label><label>Auto-fit clusters <input type="checkbox" defaultChecked/></label></section>
+        <section><header>ANALYTICAL LENS</header><div className="lens-grid"><button className="active">Patterns</button><button>Historical</button><button>Biological</button><button onClick={()=>setActive("contra")}>Sceptic</button></div></section>
+      </div>}
+    </aside>
 
-      <section className="workspace">
-        <div className="canvas-panel">
-          <div className="canvas-toolbar">
-            <div><p className="kicker">INVESTIGATION CANVAS</p><h1>Ancient altered states</h1></div>
-            <div className="lens-control"><span>Lens</span>{["Pattern", "Historical", "Biological", "Sceptic"].map(item => <button key={item} onClick={() => { setLens(item); setContradictions(item === "Sceptic"); }} className={lens === item ? "active" : ""}>{item}</button>)}</div>
-          </div>
-
-          <div className={`graph ${contradictions ? "sceptic" : ""}`}>
-            <div className="grid-lines" />
-            <svg className="edges" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-              {edges.map(([a,b], i) => {
-                const n1 = baseNodes.find(n => n.id === a)!; const n2 = baseNodes.find(n => n.id === b)!;
-                if (!visibleNodes.some(n => n.id === a) || !visibleNodes.some(n => n.id === b)) return null;
-                return <line key={i} x1={n1.x} y1={n1.y} x2={n2.x} y2={n2.y} className={a === "contra" || b === "contra" ? "edge-contradiction" : ""} />;
-              })}
-            </svg>
-
-            <div className="canvas-note"><span className="pulse" />{contradictions ? "Sceptic lens · challenges prioritised" : `${lens} lens · strongest relationships shown`}</div>
-            {surprise && <div className="surprise-card"><small>CURIOSITY 04</small><strong>Darkness follows fasting in 71% of eligible sequences</strong><span>Top 2.8% of corpus associations · 4 regions</span><button onClick={() => { setActive("dark"); setSurprise(false); }}>Explore pattern →</button></div>}
-            {visibleNodes.map(node => (
-              <button key={node.id} className={`node node-${node.kind} ${active === node.id ? "focused" : ""} ${selected.includes(node.id) ? "selected" : ""}`} style={{ left: `${node.x}%`, top: `${node.y}%` }} onClick={() => toggleSelect(node.id)}>
-                <span className="node-type">{node.eyebrow || kindLabel[node.kind]}</span><strong>{node.label}</strong><small>{node.meta}</small>
-              </button>
-            ))}
-            <div className="zoom"><button aria-label="Zoom in">+</button><button aria-label="Zoom out">−</button><button aria-label="Fit canvas">⌗</button></div>
-            <div className="legend">{(["evidence", "concept", "pattern", "hypothesis", "contradiction"] as NodeKind[]).map(k => <span key={k}><i className={`dot ${k}`} />{kindLabel[k]}</span>)}</div>
-          </div>
-
-          <div className="selection-bar">
-            <div className="selection-stack">{selected.map((id, i) => <span key={id} style={{ zIndex: 3-i }}>{details[id].title.slice(0,1)}</span>)}</div>
-            <p><strong>{selected.length} nodes selected</strong><span>{selected.map(id => details[id].title).join(" · ")}</span></p>
-            <button className="clear" onClick={() => setSelected([])}>Clear</button>
-            <button className="investigate" disabled={selected.length < 2} onClick={runInvestigation}><span>✦</span> Investigate relationship</button>
-          </div>
-        </div>
-
-        <aside className="investigator">
-          <div className="panel-head"><div><span className="ai-star">✦</span><p className="kicker">AI INVESTIGATOR</p></div><button aria-label="Panel options">•••</button></div>
-          <div className="activity">
-            <div className="context-card"><span>Current focus</span><strong>{selectedDetail.title}</strong><small>{kindLabel[baseNodes.find(n => n.id === active)?.kind || "concept"]} · {lens} lens</small></div>
-            {feed.slice(-2).map((item, i) => <div className="ai-message" key={i}><span className="mini-star">✦</span><p>{item}</p></div>)}
-
-            <div className="detail-card">
-              <div className="detail-title"><span className={`type-pill ${baseNodes.find(n=>n.id===active)?.kind}`}>{kindLabel[baseNodes.find(n=>n.id===active)?.kind || "concept"]}</span><button aria-label="Pin item">⌖</button></div>
-              <h2>{selectedDetail.title}</h2><p>{selectedDetail.summary}</p>
-              <div className="tag-row">{selectedDetail.tags.map(t => <span key={t}>{t}</span>)}</div>
-              <div className="confidence"><span>Evidence integrity</span><b>{active === "pattern27" ? "82" : active === "contra" ? "76" : "68"}/100</b><div><i style={{width: active === "pattern27" ? "82%" : active === "contra" ? "76%" : "68%"}} /></div></div>
-              <button className="evidence-button" onClick={() => setActive(active === "source" ? "evidence1" : "source")}>View evidence lineage <span>→</span></button>
-            </div>
-          </div>
-          <div className="quick-prompts">
-            <button onClick={() => ask("Find evidence against this")}>Find evidence against this</button>
-            <button onClick={() => ask("Show primary sources")}>Show primary sources</button>
-            <button className="surprise" onClick={triggerSurprise}>✦ Surprise me</button>
-          </div>
-          <div className="composer"><textarea value={message} onChange={e => setMessage(e.target.value)} onKeyDown={e => { if(e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); } }} placeholder="Ask about this investigation…" aria-label="Ask the investigator"/><div><span>↵ to send</span><button onClick={() => ask()} aria-label="Send message">↑</button></div></div>
-        </aside>
-      </section>
-    </main>
-  );
+    <button className={`ai-tab ${aiOpen?"open":""}`} onClick={()=>setAiOpen(!aiOpen)}>✦ AI Investigator <span>{aiOpen?"×":"↑"}</span></button>
+    {aiOpen&&<div className="ai-drawer"><header><b>✦ AI Investigator</b><button onClick={()=>setAiOpen(false)}>×</button></header><div className="ai-copy">I searched the selected concepts across 1,842 nodes. Pattern 027 is the strongest independent relationship, but eight records weaken a universal explanation.</div><div className="ai-chips"><button onClick={()=>setActive("contra")}>Find evidence against this</button><button>Only independent sources</button></div><div className="ai-input">Ask this investigation… <button>↑</button></div></div>}
+  </main>
 }
